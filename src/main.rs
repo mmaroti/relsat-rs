@@ -21,25 +21,14 @@ mod buffer;
 mod shape;
 mod theory;
 
-use shape::*;
+// use shape::*;
+use theory::*;
 
 fn main() {
-    let shape = Shape::new(vec![2, 3, 2]);
-    println!("{:?}", shape.size());
+    let mut theory: Theory = Default::default();
+    let _mul = theory.add_variable("mul", 3);
+    let _inv = theory.add_variable("inv", 2);
+    let _one = theory.add_variable("one", 1);
 
-    let view1 = View::new(&shape);
-    println!("{:?}", view1);
-    println!("{:?}", view1.positions().collect::<Vec<usize>>());
-
-    let view2 = view1.polymer(&Shape::new(vec![3, 4, 2]), &[2, 0, 2]);
-    println!("{:?}", view2);
-    println!("{:?}", view2.positions().collect::<Vec<usize>>());
-
-    let view3 = view1.permute(&[2, 0, 1]);
-    println!("{:?}", view3);
-    println!("{:?}", view3.positions().collect::<Vec<usize>>());
-
-    let view4 = view3.simplify();
-    println!("{:?}", view4);
-    println!("{:?}", view4.positions().collect::<Vec<usize>>());
+    theory.print()
 }

@@ -19,39 +19,46 @@
 
 use std::ops::{Index, Range};
 
+/// Data type to store arities.
+pub type ARITY = u32;
+
+/// Data type to store dimensions.
+pub type DIMEN = u32;
+
 /// The shape of a tensor, which is just a vector of non-negative dimensions.
 #[derive(PartialEq, Eq, Debug)]
 pub struct Shape {
-    dimensions: Vec<usize>,
+    dimensions: Vec<DIMEN>,
     size: usize,
 }
 
-impl Index<usize> for Shape {
-    type Output = usize;
+impl Index<ARITY> for Shape {
+    type Output = DIMEN;
 
-    fn index(&self, index: usize) -> &Self::Output {
-        self.dimensions.index(index)
+    fn index(&self, index: ARITY) -> &Self::Output {
+        self.dimensions.index(index as usize)
     }
 }
 
 impl Shape {
     /// Creates a new shape with the given dimensions.
-    pub fn new(dimensions: Vec<usize>) -> Self {
+    pub fn new(dimensions: Vec<DIMEN>) -> Self {
+        assert!(dimensions.len() <= ARITY::MAX as usize);
         let mut size = 1;
         for &d in dimensions.iter() {
-            size *= d;
+            size *= d as usize;
         }
         Self { dimensions, size }
     }
 
     /// Iterates over the dimensions.
-    pub fn iter(&self) -> std::slice::Iter<usize> {
+    pub fn iter(&self) -> std::slice::Iter<DIMEN> {
         self.dimensions.iter()
     }
 
     /// Returns the number of dimensions.
-    pub fn rank(&self) -> usize {
-        self.dimensions.len()
+    pub fn rank(&self) -> ARITY {
+        self.dimensions.len() as ARITY
     }
 
     /// The number of elements, which is just the product of all dimensions.
@@ -61,24 +68,25 @@ impl Shape {
 
     /// Returns the position in a flat array of the given set of coordinates.
     /// The length of the coordinates must match the rank.
-    pub fn position(&self, coordinates: &[usize]) -> usize {
+    pub fn position(&self, coordinates: &[DIMEN]) -> usize {
         debug_assert!(coordinates.len() == self.dimensions.len());
         let mut n = 0;
         for (&c, &d) in coordinates.iter().zip(self.dimensions.iter()) {
             debug_assert!(c < d);
-            n = n * d + c;
+            n = n * (d as usize) + (c as usize);
         }
         n
     }
 
     /// Sets the coordinates that correspond to the given position. The length
     /// of the coordinates must match the rank.
-    pub fn coordinates(&self, mut position: usize, coordinates: &mut [usize]) {
+    pub fn coordinates(&self, mut position: usize, coordinates: &mut [DIMEN]) {
         debug_assert!(position < self.size);
         debug_assert!(coordinates.len() == self.dimensions.len());
         for i in (0..self.dimensions.len()).rev() {
-            coordinates[i] = position % self.dimensions[i];
-            position /= self.dimensions[i];
+            let d = self.dimensions[i] as usize;
+            coordinates[i] = (position % d) as DIMEN;
+            position /= d;
         }
         debug_assert!(position == 0);
     }
@@ -93,7 +101,7 @@ impl Shape {
 /// corresponding strides.
 #[derive(PartialEq, Eq, Debug)]
 pub struct View {
-    strides: Vec<(usize, usize)>, // dim, stride
+    strides: Vec<(DIMEN, usize)>, // dim, stride
     offset: usize,
 }
 
@@ -101,42 +109,43 @@ impl View {
     /// Creates the canonical view of the given shape, which is the fortran order,
     /// where the first coordinate has stride 1.
     pub fn new(shape: &Shape) -> Self {
-        let mut s = 1;
-        let strides = shape
+        let mut s: usize = 1;
+        let strides: Vec<(DIMEN, usize)> = shape
             .dimensions
             .iter()
             .map(|&d| {
                 let t = s;
-                s *= d;
+                s *= d as usize;
                 (d, t)
             })
             .collect();
+        debug_assert!(strides.len() <= ARITY::MAX as usize);
         let offset = 0;
         Self { strides, offset }
     }
 
     /// Returns the number of dimensions.
-    pub fn rank(&self) -> usize {
-        self.strides.len()
+    pub fn rank(&self) -> ARITY {
+        self.strides.len() as ARITY
     }
 
     /// The number of elements, which is just the product of all dimensions.
     pub fn size(&self) -> usize {
         let mut n = 1;
         for &(d, _) in self.strides.iter() {
-            n *= d;
+            n *= d as usize;
         }
         n
     }
 
     /// Returns the position in a flat array of the given set of coordinates.
     /// The length of the coordinates must match the rank.
-    pub fn position(&self, coordinates: &[usize]) -> usize {
+    pub fn position(&self, coordinates: &[DIMEN]) -> usize {
         debug_assert!(coordinates.len() == self.strides.len());
         let mut n = self.offset;
         for (&c, &(d, s)) in coordinates.iter().zip(self.strides.iter()) {
             debug_assert!(c < d);
-            n += c * s;
+            n += (c as usize) * s;
         }
         n
     }
@@ -154,12 +163,12 @@ impl View {
 
     /// Permutes the coordinates of the given view. The map mast be of size rank.
     /// The old coordinate `i` will be placed at the new coordinate `map[i]`.
-    pub fn permute(&self, map: &[usize]) -> Self {
+    pub fn permute(&self, map: &[ARITY]) -> Self {
         debug_assert!(map.len() == self.strides.len());
-        let mut strides = vec![(usize::MAX, usize::MAX); self.strides.len()];
+        let mut strides = vec![(DIMEN::MAX, usize::MAX); self.strides.len()];
         for (i, &x) in map.iter().enumerate() {
-            debug_assert!(strides[x] == (usize::MAX, usize::MAX));
-            strides[x] = self.strides[i];
+            debug_assert!(strides[x as usize] == (DIMEN::MAX, usize::MAX));
+            strides[x as usize] = self.strides[i];
         }
         let offset = self.offset;
         Self { strides, offset }
@@ -169,12 +178,12 @@ impl View {
     /// dummy variables and identification of variables. The map must be of
     /// size rank. The old coordinate `i` will be placed at the new coordinate
     /// `map[i]`.
-    pub fn polymer(&self, shape: &Shape, map: &[usize]) -> Self {
+    pub fn polymer(&self, shape: &Shape, map: &[ARITY]) -> Self {
         debug_assert!(map.len() == self.strides.len());
-        let mut strides: Vec<(usize, usize)> = shape.iter().map(|&d| (d, 0)).collect();
+        let mut strides: Vec<(DIMEN, usize)> = shape.iter().map(|&d| (d, 0)).collect();
         for (i, &x) in map.iter().enumerate() {
-            debug_assert!(self.strides[i].0 == strides[x].0);
-            strides[x].1 += self.strides[i].1;
+            debug_assert!(self.strides[i].0 == strides[x as usize].0);
+            strides[x as usize].1 += self.strides[i].1;
         }
         let offset = self.offset;
         Self { strides, offset }
@@ -194,7 +203,7 @@ impl View {
                 strides[0] = (0, 0);
                 break;
             }
-            let s = strides[tail].0 * strides[tail].1;
+            let s = (strides[tail].0 as usize) * strides[tail].1;
             if s == strides[head].1 {
                 strides[tail].0 *= strides[head].0;
             } else {
@@ -214,7 +223,7 @@ impl View {
 #[derive(Debug)]
 pub struct Iter {
     index: usize,
-    entries: Vec<(usize, usize, usize)>, // coord, dim, stride
+    entries: Vec<(DIMEN, DIMEN, usize)>, // coord, dim, stride
     done: bool,
 }
 
@@ -244,7 +253,7 @@ impl Iter {
         self.done = false;
         for e in self.entries.iter_mut() {
             self.done |= e.1 == 0;
-            self.index -= e.0 * e.2;
+            self.index -= (e.0 as usize) * e.2;
             e.0 = 0;
         }
     }
@@ -262,7 +271,7 @@ impl Iterator for Iter {
                 self.index += e.2;
                 e.0 += 1;
                 if e.0 >= e.1 {
-                    self.index -= e.0 * e.2;
+                    self.index -= (e.0 as usize) * e.2;
                     e.0 = 0;
                 } else {
                     return Some(index);
