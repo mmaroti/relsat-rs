@@ -17,10 +17,10 @@
 
 #![allow(dead_code)]
 
-// mod bitvec;
-// mod compute;
-// mod theory;
+mod buffer;
 mod shape;
+mod theory;
+
 use shape::*;
 
 fn main() {

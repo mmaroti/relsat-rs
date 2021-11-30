@@ -23,6 +23,7 @@ use std::ops::{Index, Range};
 #[derive(PartialEq, Eq, Debug)]
 pub struct Shape {
     dimensions: Vec<usize>,
+    size: usize,
 }
 
 impl Index<usize> for Shape {
@@ -36,7 +37,11 @@ impl Index<usize> for Shape {
 impl Shape {
     /// Creates a new shape with the given dimensions.
     pub fn new(dimensions: Vec<usize>) -> Self {
-        Self { dimensions }
+        let mut size = 1;
+        for &d in dimensions.iter() {
+            size *= d;
+        }
+        Self { dimensions, size }
     }
 
     /// Iterates over the dimensions.
@@ -51,11 +56,7 @@ impl Shape {
 
     /// The number of elements, which is just the product of all dimensions.
     pub fn size(&self) -> usize {
-        let mut n = 1;
-        for &d in self.dimensions.iter() {
-            n *= d;
-        }
-        n
+        self.size
     }
 
     /// Returns the position in a flat array of the given set of coordinates.
@@ -73,6 +74,7 @@ impl Shape {
     /// Sets the coordinates that correspond to the given position. The length
     /// of the coordinates must match the rank.
     pub fn coordinates(&self, mut position: usize, coordinates: &mut [usize]) {
+        debug_assert!(position < self.size);
         debug_assert!(coordinates.len() == self.dimensions.len());
         for i in (0..self.dimensions.len()).rev() {
             coordinates[i] = position % self.dimensions[i];
@@ -83,7 +85,7 @@ impl Shape {
 
     /// Returns an iterator through all valid positions, size many in total.
     pub fn positions(&self) -> Range<usize> {
-        0..self.size()
+        0..self.size
     }
 }
 
@@ -209,6 +211,7 @@ impl View {
 }
 
 /// View iterator that returns all valid positions, size many in total.
+#[derive(Debug)]
 pub struct Iter {
     index: usize,
     entries: Vec<(usize, usize, usize)>, // coord, dim, stride
