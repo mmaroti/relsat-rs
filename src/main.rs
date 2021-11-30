@@ -17,14 +17,29 @@
 
 #![allow(dead_code)]
 
-mod bitvec;
-mod compute;
-mod theory;
+// mod bitvec;
+// mod compute;
+// mod theory;
+mod shape;
+use shape::*;
 
 fn main() {
-    let equ = theory::Symbol::new("equ", 2);
-    let lit = theory::Literal::new(equ, true, 3, vec![2, 0]);
+    let shape = Shape::new(vec![2, 3, 2]);
+    println!("{:?}", shape.size());
 
-    println!("{:?}", equ);
-    println!("{:?}", lit);
+    let view1 = View::new(&shape);
+    println!("{:?}", view1);
+    println!("{:?}", view1.positions().collect::<Vec<usize>>());
+
+    let view2 = view1.polymer(&Shape::new(vec![3, 4, 2]), &[2, 0, 2]);
+    println!("{:?}", view2);
+    println!("{:?}", view2.positions().collect::<Vec<usize>>());
+
+    let view3 = view1.permute(&[2, 0, 1]);
+    println!("{:?}", view3);
+    println!("{:?}", view3.positions().collect::<Vec<usize>>());
+
+    let view4 = view3.simplify();
+    println!("{:?}", view4);
+    println!("{:?}", view4.positions().collect::<Vec<usize>>());
 }
