@@ -15,6 +15,16 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#![allow(dead_code)]
+
+mod bitvec;
+mod compute;
+mod theory;
+
 fn main() {
-    println!("Hello, world!");
+    let equ = theory::Symbol::new("equ", 2);
+    let lit = theory::Literal::new(equ, true, 3, vec![2, 0]);
+
+    println!("{:?}", equ);
+    println!("{:?}", lit);
 }
