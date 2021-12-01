@@ -15,7 +15,7 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-use super::shape::{Shape, View, DIMEN};
+use super::shape::{Shape, View};
 
 #[derive(Debug)]
 pub struct Buffer {
@@ -43,17 +43,17 @@ impl Buffer {
         View::new(&self.shape)
     }
 
-    pub fn get(&self, coordinates: &[DIMEN]) -> bool {
+    pub fn get(&self, coordinates: &[usize]) -> bool {
         let pos = self.shape.position(coordinates);
         self.data[pos / 32] & (1 << (pos % 32)) != 0
     }
 
-    pub fn set(&mut self, coordinates: &[DIMEN]) {
+    pub fn set(&mut self, coordinates: &[usize]) {
         let pos = self.shape.position(coordinates);
         self.data[pos / 32] |= 1 << (pos % 32);
     }
 
-    pub fn clr(&mut self, coordinates: &[DIMEN]) {
+    pub fn clr(&mut self, coordinates: &[usize]) {
         let pos = self.shape.position(coordinates);
         self.data[pos / 32] &= !(1 << (pos % 32));
     }
