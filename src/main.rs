@@ -26,7 +26,7 @@ use theory::*;
 
 fn main() {
     let mut theory: Theory = Default::default();
-    let equ = theory.add_variable("equ", 3);
+    let equ = theory.add_variable("equ", 2);
     let mul = theory.add_variable("mul", 3);
     let inv = theory.add_variable("inv", 2);
     let one = theory.add_variable("one", 1);

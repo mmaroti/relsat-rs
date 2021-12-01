@@ -15,7 +15,7 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-use std::io::{Result, Write};
+use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct Variable {
@@ -85,6 +85,7 @@ impl Theory {
                 for &x in m.iter() {
                     used[x] = true;
                 }
+                assert!(self.variables[v].arity == m.len());
                 Literal::new(v, s, m, arity)
             })
             .collect();
@@ -92,63 +93,60 @@ impl Theory {
         self.clauses.push(Clause::new(literals));
     }
 
-    fn write_arguments<Iter>(&self, out: &mut impl Write, iter: Iter) -> Result<()>
-    where
-        Iter: Iterator<Item = usize>,
-    {
-        write!(out, "(")?;
-        let mut first = true;
-        for x in iter {
-            if first {
-                first = false;
-            } else {
-                write!(out, ",")?;
-            }
-            write!(out, "x{}", x)?;
+    pub fn print(&self) {
+        for v in self.variables.iter() {
+            println!("variable: {}", self.context(v));
         }
-        write!(out, ")")
+        for c in self.clauses.iter() {
+            println!("clause: {}", self.context(c));
+        }
     }
 
-    fn write_variable(&self, out: &mut impl Write, var: &Variable) -> Result<()> {
-        write!(out, "{}", var.name)?;
-        self.write_arguments(out, 0..var.arity)
+    fn context<'a, OBJ>(&'a self, obj: &'a OBJ) -> Context<'a, OBJ> {
+        Context { obj, thy: self }
     }
+}
 
-    fn write_literal(&self, out: &mut impl Write, lit: &Literal) -> Result<()> {
-        write!(out, "{}", if lit.sign { '+' } else { '-' })?;
-        write!(out, "{}", self.variables[lit.variable].name)?;
-        self.write_arguments(out, lit.vars.iter().cloned())
-    }
+struct Context<'a, OBJ> {
+    obj: &'a OBJ,
+    thy: &'a Theory,
+}
 
-    fn write_clause(&self, out: &mut impl Write, cla: &Clause) -> Result<()> {
-        let mut first = true;
-        for lit in cla.literals.iter() {
-            if first {
-                first = false;
-            } else {
-                write!(out, " ")?;
+impl<'a> fmt::Display for Context<'a, Variable> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}(", self.obj.name)?;
+        for i in 0..self.obj.arity {
+            if i > 0 {
+                write!(f, ",")?;
             }
-            self.write_literal(out, lit)?;
+            write!(f, "x{}", i)?;
+        }
+        write!(f, ")")
+    }
+}
+
+impl<'a> fmt::Display for Context<'a, Literal> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let v = &self.thy.variables[self.obj.variable];
+        write!(f, "{}{}(", if self.obj.sign { '+' } else { '-' }, v.name)?;
+        for (i, x) in self.obj.vars.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "x{}", x)?;
+        }
+        write!(f, ")")
+    }
+}
+
+impl<'a> fmt::Display for Context<'a, Clause> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (i, l) in self.obj.literals.iter().enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
+            }
+            write!(f, "{}", self.thy.context(l))?;
         }
         Ok(())
-    }
-
-    pub fn print(&self) {
-        let out = std::io::stdout();
-        let mut out = out.lock();
-        let steps = || -> std::io::Result<()> {
-            for v in self.variables.iter() {
-                write!(out, "variable: ")?;
-                self.write_variable(&mut out, v)?;
-                writeln!(out)?;
-            }
-            for c in self.clauses.iter() {
-                write!(out, "clause: ")?;
-                self.write_clause(&mut out, c)?;
-                writeln!(out)?;
-            }
-            Ok(())
-        }();
-        steps.expect("Could not write to stdout");
     }
 }
