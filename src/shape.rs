@@ -22,7 +22,7 @@ use std::ops::{Index, Range};
 /// The shape of a tensor, which is just a vector of non-negative dimensions.
 #[derive(PartialEq, Eq, Debug)]
 pub struct Shape {
-    dimensions: Vec<usize>,
+    dimensions: Box<[usize]>,
     size: usize,
 }
 
@@ -37,6 +37,7 @@ impl Index<usize> for Shape {
 impl Shape {
     /// Creates a new shape with the given dimensions.
     pub fn new(dimensions: Vec<usize>) -> Self {
+        let dimensions = dimensions.into_boxed_slice();
         let mut size = 1;
         for &d in dimensions.iter() {
             size *= d;
@@ -94,7 +95,7 @@ impl Shape {
 /// corresponding strides.
 #[derive(PartialEq, Eq, Debug)]
 pub struct View {
-    strides: Vec<(usize, usize)>, // dim, stride
+    strides: Box<[(usize, usize)]>, // dim, stride
     offset: usize,
 }
 
@@ -157,7 +158,7 @@ impl View {
     /// The old coordinate `i` will be placed at the new coordinate `map[i]`.
     pub fn permute(&self, map: &[usize]) -> Self {
         debug_assert!(map.len() == self.strides.len());
-        let mut strides = vec![(0, 0); self.strides.len()];
+        let mut strides = vec![(0, 0); self.strides.len()].into_boxed_slice();
         for (i, &x) in map.iter().enumerate() {
             debug_assert!(strides[x] == (0, 0));
             strides[x] = self.strides[i];
@@ -172,7 +173,8 @@ impl View {
     /// `map[i]`.
     pub fn polymer(&self, shape: &Shape, map: &[usize]) -> Self {
         debug_assert!(map.len() == self.strides.len());
-        let mut strides: Vec<(usize, usize)> = shape.iter().map(|&d| (d, 0)).collect();
+        let strides: Vec<(usize, usize)> = shape.iter().map(|&d| (d, 0)).collect();
+        let mut strides = strides.into_boxed_slice();
         for (i, &x) in map.iter().enumerate() {
             debug_assert!(self.strides[i].0 == strides[x].0);
             strides[x].1 += self.strides[i].1;
@@ -184,7 +186,7 @@ impl View {
     /// Returns another view whose positions are the same but might have fewer
     /// dimensions because some could be merged into larger indices.
     pub fn simplify(&self) -> Self {
-        let mut strides = self.strides.clone();
+        let mut strides = self.strides.clone().into_vec();
 
         let mut tail = 0;
         let mut head = 1;
@@ -205,7 +207,8 @@ impl View {
             head += 1;
         }
 
-        strides.resize(tail + 1, (0, 0));
+        strides.truncate(tail + 1);
+        let strides = strides.into_boxed_slice();
         let offset = self.offset;
         Self { strides, offset }
     }
@@ -215,7 +218,7 @@ impl View {
 #[derive(Debug)]
 pub struct Iter {
     index: usize,
-    entries: Vec<(usize, usize, usize)>, // coord, dim, stride
+    entries: Box<[(usize, usize, usize)]>, // coord, dim, stride
     done: bool,
 }
 

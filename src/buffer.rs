@@ -19,15 +19,14 @@ use super::shape::{Shape, View};
 
 #[derive(Debug)]
 pub struct Buffer {
-    data: Vec<u32>,
+    data: Box<[u32]>,
     shape: Shape,
 }
 
 impl Buffer {
     pub fn new(shape: Shape) -> Self {
         let len = (shape.size() + 31) / 32;
-        let mut data = Vec::with_capacity(len);
-        unsafe { data.set_len(len) };
+        let data = vec![0; len].into_boxed_slice();
         Self { data, shape }
     }
 

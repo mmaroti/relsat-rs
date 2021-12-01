@@ -34,60 +34,45 @@ fn main() {
     theory.add_clause(
         6,
         vec![
-            (mul, false, vec![0, 1, 3]),
-            (mul, false, vec![3, 2, 4]),
-            (mul, false, vec![1, 2, 5]),
-            (mul, true, vec![0, 5, 4]),
+            (-mul, vec![0, 1, 3]),
+            (-mul, vec![3, 2, 4]),
+            (-mul, vec![1, 2, 5]),
+            (mul, vec![0, 5, 4]),
         ],
     );
 
     theory.add_clause(
         6,
         vec![
-            (mul, false, vec![1, 2, 3]),
-            (mul, false, vec![0, 3, 4]),
-            (mul, false, vec![0, 1, 5]),
-            (mul, true, vec![5, 2, 4]),
+            (-mul, vec![1, 2, 3]),
+            (-mul, vec![0, 3, 4]),
+            (-mul, vec![0, 1, 5]),
+            (mul, vec![5, 2, 4]),
         ],
     );
 
     theory.add_clause(
         3,
-        vec![
-            (inv, false, vec![0, 1]),
-            (mul, false, vec![1, 0, 2]),
-            (one, true, vec![2]),
-        ],
+        vec![(-inv, vec![0, 1]), (-mul, vec![1, 0, 2]), (one, vec![2])],
     );
 
-    theory.add_clause(2, vec![(one, false, vec![0]), (mul, true, vec![0, 1, 1])]);
+    theory.add_clause(2, vec![(-one, vec![0]), (mul, vec![0, 1, 1])]);
 
     theory.add_clause(
         4,
         vec![
-            (mul, false, vec![0, 1, 2]),
-            (mul, false, vec![0, 1, 3]),
-            (equ, true, vec![2, 3]),
+            (-mul, vec![0, 1, 2]),
+            (-mul, vec![0, 1, 3]),
+            (equ, vec![2, 3]),
         ],
     );
 
     theory.add_clause(
         3,
-        vec![
-            (inv, false, vec![0, 1]),
-            (inv, false, vec![0, 2]),
-            (equ, true, vec![1, 2]),
-        ],
+        vec![(-inv, vec![0, 1]), (-inv, vec![0, 2]), (equ, vec![1, 2])],
     );
 
-    theory.add_clause(
-        2,
-        vec![
-            (one, false, vec![0]),
-            (one, false, vec![1]),
-            (equ, true, vec![0, 1]),
-        ],
-    );
+    theory.add_clause(2, vec![(-one, vec![0]), (-one, vec![1]), (equ, vec![0, 1])]);
 
     theory.print()
 }

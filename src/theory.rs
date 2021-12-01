@@ -32,33 +32,30 @@ impl Variable {
 
 #[derive(Clone, Debug)]
 pub struct Literal {
-    variable: usize,
-    sign: bool,
-    vars: Vec<usize>,
-    arity: usize,
+    variable: isize,
+    indices: Box<[usize]>,
 }
 
 impl Literal {
-    pub fn new(variable: usize, sign: bool, vars: Vec<usize>, arity: usize) -> Self {
-        for &var in vars.iter() {
-            assert!(var < arity);
-        }
-        Self {
-            variable,
-            sign,
-            vars,
-            arity,
-        }
+    pub fn new(variable: isize, indices: Vec<usize>) -> Self {
+        debug_assert!(variable != 0);
+        let indices = indices.into_boxed_slice();
+        Self { variable, indices }
+    }
+
+    pub fn sign(&self) -> bool {
+        self.variable >= 0
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Clause {
-    literals: Vec<Literal>,
+    literals: Box<[Literal]>,
 }
 
 impl Clause {
     fn new(literals: Vec<Literal>) -> Self {
+        let literals = literals.into_boxed_slice();
         Self { literals }
     }
 }
@@ -70,23 +67,30 @@ pub struct Theory {
 }
 
 impl Theory {
-    pub fn add_variable(&mut self, name: &str, arity: usize) -> usize {
+    pub fn add_variable(&mut self, name: &str, arity: usize) -> isize {
         assert!(!self.variables.iter().any(|v| v.name == name));
-        let v = self.variables.len();
+        let var = (self.variables.len() + 1) as isize;
         self.variables.push(Variable::new(name, arity));
-        v
+        var
     }
 
-    pub fn add_clause(&mut self, arity: usize, literals: Vec<(usize, bool, Vec<usize>)>) {
+    pub fn get_variable(&self, var: isize) -> &Variable {
+        debug_assert!(var != 0);
+        let var = (var.abs() - 1) as usize;
+        &self.variables[var]
+    }
+
+    pub fn add_clause(&mut self, arity: usize, literals: Vec<(isize, Vec<usize>)>) {
         let mut used = vec![false; arity];
         let literals = literals
             .into_iter()
-            .map(|(v, s, m)| {
-                for &x in m.iter() {
+            .map(|(var, map)| {
+                assert!(self.get_variable(var).arity == map.len());
+                for &x in map.iter() {
+                    assert!(x < arity);
                     used[x] = true;
                 }
-                assert!(self.variables[v].arity == m.len());
-                Literal::new(v, s, m, arity)
+                Literal::new(var, map)
             })
             .collect();
         assert!(used.iter().all(|&x| x));
@@ -94,11 +98,11 @@ impl Theory {
     }
 
     pub fn print(&self) {
-        for v in self.variables.iter() {
-            println!("variable: {}", self.context(v));
+        for var in self.variables.iter() {
+            println!("variable: {}", self.context(var));
         }
-        for c in self.clauses.iter() {
-            println!("clause: {}", self.context(c));
+        for cla in self.clauses.iter() {
+            println!("clause: {}", self.context(cla));
         }
     }
 
@@ -115,11 +119,11 @@ struct Context<'a, OBJ> {
 impl<'a> fmt::Display for Context<'a, Variable> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}(", self.obj.name)?;
-        for i in 0..self.obj.arity {
-            if i > 0 {
+        for idx in 0..self.obj.arity {
+            if idx > 0 {
                 write!(f, ",")?;
             }
-            write!(f, "x{}", i)?;
+            write!(f, "x{}", idx)?;
         }
         write!(f, ")")
     }
@@ -127,13 +131,16 @@ impl<'a> fmt::Display for Context<'a, Variable> {
 
 impl<'a> fmt::Display for Context<'a, Literal> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let v = &self.thy.variables[self.obj.variable];
-        write!(f, "{}{}(", if self.obj.sign { '+' } else { '-' }, v.name)?;
-        for (i, x) in self.obj.vars.iter().enumerate() {
-            if i > 0 {
+        let v = self.thy.get_variable(self.obj.variable);
+        write!(f, "{}{}(", if self.obj.sign() { '+' } else { '-' }, v.name)?;
+        let mut first = true;
+        for &idx in self.obj.indices.iter() {
+            if first {
+                first = false;
+            } else {
                 write!(f, ",")?;
             }
-            write!(f, "x{}", x)?;
+            write!(f, "x{}", idx)?;
         }
         write!(f, ")")
     }
@@ -141,11 +148,14 @@ impl<'a> fmt::Display for Context<'a, Literal> {
 
 impl<'a> fmt::Display for Context<'a, Clause> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for (i, l) in self.obj.literals.iter().enumerate() {
-            if i > 0 {
+        let mut first = true;
+        for lit in self.obj.literals.iter() {
+            if first {
+                first = false;
+            } else {
                 write!(f, " ")?;
             }
-            write!(f, "{}", self.thy.context(l))?;
+            write!(f, "{}", self.thy.context(lit))?;
         }
         Ok(())
     }
