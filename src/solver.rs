@@ -15,24 +15,25 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
 use super::buffer::Buffer2;
-use super::shape::Shape;
-use super::theory::{Theory, Variable};
+use super::shape::{Shape, View};
+use super::theory::{Literal, Theory, Variable};
 
 #[derive(Debug)]
 pub struct Relation {
     variable: Rc<Variable>,
-    buffer: Buffer2,
+    buffer: RefCell<Buffer2>,
     shape: Shape,
 }
 
 impl Relation {
     fn new(variable: Rc<Variable>, size: usize) -> Self {
         let shape = Shape::new(vec![size; variable.arity]);
-        let buffer = Buffer2::new(shape.size());
+        let buffer = RefCell::new(Buffer2::new(shape.size(), 2));
         Self {
             variable,
             buffer,
@@ -48,39 +49,48 @@ impl Relation {
         }
     }
 
-    pub fn set_equ(&mut self) {
+    pub fn set_equ(&self) {
         assert!(self.shape.rank() == 2);
         let size = self.shape[0];
+        let mut buffer = self.buffer.borrow_mut();
         for i in 0..size {
             for j in 0..size {
                 let pos = self.shape.position(&[i, j]);
-                self.buffer.set(pos, if i == j { 2 } else { 1 })
+                buffer.set(pos, if i == j { 1 } else { 0 })
             }
         }
     }
 }
 
-impl<'a> fmt::Display for Relation {
+impl fmt::Display for Relation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let size = self.size();
         write!(f, "{} \"", self.variable)?;
-        const TABLE: [char; 4] = ['?', '0', '1', 'X'];
-        for idx in 0..self.buffer.len() {
+        let size = self.size();
+        let buffer = self.buffer.borrow();
+        const FORMAT: [char; 4] = ['0', '1', '?', 'X'];
+        for idx in 0..buffer.len() {
             if idx > 0 && idx % size == 0 {
                 write!(f, " ")?;
             }
-            let val = self.buffer.get(idx);
-            write!(f, "{}", TABLE[val as usize])?;
+            let val = buffer.get(idx);
+            write!(f, "{}", FORMAT[val as usize])?;
         }
         write!(f, "\"")
     }
 }
 
 #[derive(Debug)]
+pub struct Polymer {
+    relation: Rc<Relation>,
+    literal: Rc<Literal>,
+    view: View,
+}
+
+#[derive(Debug)]
 pub struct Solver {
     theory: Theory,
     size: usize,
-    relations: Vec<Relation>,
+    relations: Vec<Rc<Relation>>,
 }
 
 impl Solver {
@@ -88,7 +98,7 @@ impl Solver {
         let relations = theory
             .variables
             .iter()
-            .map(|var| Relation::new(var.clone(), size))
+            .map(|var| Rc::new(Relation::new(var.clone(), size)))
             .collect();
         Self {
             theory,
@@ -97,10 +107,10 @@ impl Solver {
         }
     }
 
-    pub fn get_relation(&mut self, var: &Variable) -> Option<&mut Relation> {
-        for rel in self.relations.iter_mut() {
+    pub fn get_relation(&self, var: &Variable) -> Option<Rc<Relation>> {
+        for rel in self.relations.iter() {
             if std::ptr::eq(&*rel.variable, var) {
-                return Some(rel);
+                return Some(rel.clone());
             }
         }
         None

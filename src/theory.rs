@@ -86,11 +86,11 @@ impl fmt::Display for Literal {
 
 #[derive(Clone, Debug)]
 pub struct Clause {
-    literals: Box<[Literal]>,
+    literals: Box<[Rc<Literal>]>,
 }
 
 impl Clause {
-    fn new(literals: Vec<Literal>) -> Self {
+    fn new(literals: Vec<Rc<Literal>>) -> Self {
         let literals = literals.into_boxed_slice();
         Self { literals }
     }
@@ -134,7 +134,7 @@ impl Theory {
                     assert!(x < arity);
                     used[x] = true;
                 }
-                Literal::new(var.clone(), sgn, map)
+                Rc::new(Literal::new(var.clone(), sgn, map))
             })
             .collect();
         assert!(used.iter().all(|&x| x));

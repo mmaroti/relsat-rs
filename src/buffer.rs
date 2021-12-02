@@ -15,6 +15,8 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+use std::fmt;
+
 #[derive(Debug)]
 pub struct Buffer1 {
     data: Box<[u32]>,
@@ -22,8 +24,12 @@ pub struct Buffer1 {
 }
 
 impl Buffer1 {
-    pub fn new(len: usize) -> Self {
-        let data = vec![0; (len + 31) / 32].into_boxed_slice();
+    const TABLE: [u32; 2] = [0x00000000, 0xffffffff];
+
+    pub fn new(len: usize, val: u32) -> Self {
+        assert!(val <= 1);
+        let val = Buffer1::TABLE[val as usize];
+        let data = vec![val; (len + 31) / 32].into_boxed_slice();
         Self { data, len }
     }
 
@@ -48,8 +54,19 @@ impl Buffer1 {
 
     pub fn fill(&mut self, val: u32) {
         debug_assert!(val <= 1);
-        const TABLE: [u32; 2] = [0x00000000, 0xffffffff];
-        self.data.fill(TABLE[val as usize]);
+        self.data.fill(Buffer1::TABLE[val as usize]);
+    }
+}
+
+impl fmt::Display for Buffer1 {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\"")?;
+        const FORMAT: [char; 2] = ['0', '1'];
+        for idx in 0..self.len() {
+            let val = self.get(idx);
+            write!(f, "{}", FORMAT[val as usize])?;
+        }
+        write!(f, "\"")
     }
 }
 
@@ -60,8 +77,12 @@ pub struct Buffer2 {
 }
 
 impl Buffer2 {
-    pub fn new(len: usize) -> Self {
-        let data = vec![0; (len + 15) / 16].into_boxed_slice();
+    const TABLE: [u32; 4] = [0x00000000, 0x55555555, 0xaaaaaaaa, 0xffffffff];
+
+    pub fn new(len: usize, val: u32) -> Self {
+        assert!(val <= 3);
+        let val = Buffer2::TABLE[val as usize];
+        let data = vec![val; (len + 15) / 16].into_boxed_slice();
         Self { data, len }
     }
 
@@ -86,8 +107,19 @@ impl Buffer2 {
 
     pub fn fill(&mut self, val: u32) {
         debug_assert!(val <= 3);
-        const TABLE: [u32; 4] = [0x00000000, 0x55555555, 0xaaaaaaaa, 0xffffffff];
-        self.data.fill(TABLE[val as usize]);
+        self.data.fill(Buffer2::TABLE[val as usize]);
+    }
+}
+
+impl fmt::Display for Buffer2 {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\"")?;
+        const FORMAT: [char; 4] = ['0', '1', '2', '3'];
+        for idx in 0..self.len() {
+            let val = self.get(idx);
+            write!(f, "{}", FORMAT[val as usize])?;
+        }
+        write!(f, "\"")
     }
 }
 
@@ -112,8 +144,8 @@ mod tests {
     #[test]
     fn buffer() {
         let vec = random(11111);
-        let mut buf1 = Buffer1::new(vec.len());
-        let mut buf2 = Buffer2::new(vec.len());
+        let mut buf1 = Buffer1::new(vec.len(), 0);
+        let mut buf2 = Buffer2::new(vec.len(), 0);
         for (i, a) in vec.iter().enumerate() {
             buf1.set(i, a & 1);
             buf2.set(i, a & 3);
