@@ -113,8 +113,8 @@ impl fmt::Display for Clause {
 
 #[derive(Clone, Debug, Default)]
 pub struct Theory {
-    pub(crate) variables: Vec<Rc<Variable>>,
-    clauses: Vec<Clause>,
+    pub variables: Vec<Rc<Variable>>,
+    pub clauses: Vec<Clause>,
 }
 
 impl Theory {

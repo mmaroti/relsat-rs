@@ -21,7 +21,7 @@ use std::rc::Rc;
 
 use super::buffer::Buffer2;
 use super::shape::{Shape, View};
-use super::theory::{Literal, Theory, Variable};
+use super::theory::{Clause, Literal, Theory, Variable};
 
 #[derive(Debug)]
 pub struct Relation {
@@ -87,10 +87,24 @@ pub struct Polymer {
 }
 
 #[derive(Debug)]
+pub struct Constraint {
+    polymers: Vec<Rc<Polymer>>,
+}
+
+impl Constraint {
+    pub fn new(clause: Rc<Clause>) -> Self {
+        Self {
+            polymers: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Solver {
     theory: Theory,
     size: usize,
     relations: Vec<Rc<Relation>>,
+    constraints: Vec<Constraint>,
 }
 
 impl Solver {
@@ -100,10 +114,16 @@ impl Solver {
             .iter()
             .map(|var| Rc::new(Relation::new(var.clone(), size)))
             .collect();
+        let constraints = theory
+            .clauses
+            .iter()
+            .map(|cla| Constraint::new(cla.clone()))
+            .collect();
         Self {
             theory,
             size,
             relations,
+            constraints,
         }
     }
 

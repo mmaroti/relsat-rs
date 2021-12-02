@@ -24,11 +24,12 @@ pub struct Buffer1 {
 }
 
 impl Buffer1 {
-    const TABLE: [u32; 2] = [0x00000000, 0xffffffff];
+    const FILL: [u32; 2] = [0x00000000, 0xffffffff];
+    const FORMAT: [char; 2] = ['0', '1'];
 
     pub fn new(len: usize, val: u32) -> Self {
         assert!(val <= 1);
-        let val = Buffer1::TABLE[val as usize];
+        let val = Buffer1::FILL[val as usize];
         let data = vec![val; (len + 31) / 32].into_boxed_slice();
         Self { data, len }
     }
@@ -54,17 +55,16 @@ impl Buffer1 {
 
     pub fn fill(&mut self, val: u32) {
         debug_assert!(val <= 1);
-        self.data.fill(Buffer1::TABLE[val as usize]);
+        self.data.fill(Buffer1::FILL[val as usize]);
     }
 }
 
 impl fmt::Display for Buffer1 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "\"")?;
-        const FORMAT: [char; 2] = ['0', '1'];
         for idx in 0..self.len() {
             let val = self.get(idx);
-            write!(f, "{}", FORMAT[val as usize])?;
+            write!(f, "{}", Buffer1::FORMAT[val as usize])?;
         }
         write!(f, "\"")
     }
@@ -77,11 +77,12 @@ pub struct Buffer2 {
 }
 
 impl Buffer2 {
-    const TABLE: [u32; 4] = [0x00000000, 0x55555555, 0xaaaaaaaa, 0xffffffff];
+    const FILL: [u32; 4] = [0x00000000, 0x55555555, 0xaaaaaaaa, 0xffffffff];
+    const FORMAT: [char; 4] = ['0', '1', '2', '3'];
 
     pub fn new(len: usize, val: u32) -> Self {
         assert!(val <= 3);
-        let val = Buffer2::TABLE[val as usize];
+        let val = Buffer2::FILL[val as usize];
         let data = vec![val; (len + 15) / 16].into_boxed_slice();
         Self { data, len }
     }
@@ -107,17 +108,16 @@ impl Buffer2 {
 
     pub fn fill(&mut self, val: u32) {
         debug_assert!(val <= 3);
-        self.data.fill(Buffer2::TABLE[val as usize]);
+        self.data.fill(Buffer2::FILL[val as usize]);
     }
 }
 
 impl fmt::Display for Buffer2 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "\"")?;
-        const FORMAT: [char; 4] = ['0', '1', '2', '3'];
         for idx in 0..self.len() {
             let val = self.get(idx);
-            write!(f, "{}", FORMAT[val as usize])?;
+            write!(f, "{}", Buffer2::FORMAT[val as usize])?;
         }
         write!(f, "\"")
     }
