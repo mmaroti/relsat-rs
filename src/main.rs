@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2019-2020, Miklos Maroti
+* Copyright (C) 2019-2021, Miklos Maroti
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -19,9 +19,10 @@
 
 mod buffer;
 mod shape;
+mod solver;
 mod theory;
 
-// use shape::*;
+use solver::*;
 use theory::*;
 
 fn main() {
@@ -74,5 +75,9 @@ fn main() {
 
     theory.add_clause(2, vec![(-one, vec![0]), (-one, vec![1]), (equ, vec![0, 1])]);
 
-    theory.print()
+    theory.print();
+
+    let mut solver = Solver::new(theory, 2);
+    solver.get_relation(equ).set_equ();
+    solver.print();
 }

@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2019-2020, Miklos Maroti
+* Copyright (C) 2019-2021, Miklos Maroti
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -62,7 +62,7 @@ impl Clause {
 
 #[derive(Clone, Debug, Default)]
 pub struct Theory {
-    variables: Vec<Variable>,
+    pub(crate) variables: Vec<Variable>,
     clauses: Vec<Clause>,
 }
 
