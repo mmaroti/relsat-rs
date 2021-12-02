@@ -16,27 +16,36 @@
 */
 
 use std::fmt;
+use std::rc::Rc;
 
 use super::buffer::Buffer2;
 use super::shape::Shape;
-use super::theory::Theory;
+use super::theory::{Theory, Variable};
 
 #[derive(Debug)]
 pub struct Relation {
+    variable: Rc<Variable>,
     buffer: Buffer2,
     shape: Shape,
 }
 
 impl Relation {
-    fn new(size: usize, arity: usize) -> Self {
-        let shape = Shape::new(vec![size, arity]);
+    fn new(variable: Rc<Variable>, size: usize) -> Self {
+        let shape = Shape::new(vec![size; variable.arity]);
         let buffer = Buffer2::new(shape.size());
-        Self { buffer, shape }
+        Self {
+            variable,
+            buffer,
+            shape,
+        }
     }
 
     fn size(&self) -> usize {
-        assert!(self.shape.rank() > 0);
-        self.shape[0]
+        if self.shape.rank() > 0 {
+            self.shape[0]
+        } else {
+            1
+        }
     }
 
     pub fn set_equ(&mut self) {
@@ -53,9 +62,13 @@ impl Relation {
 
 impl<'a> fmt::Display for Relation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\"")?;
+        let size = self.size();
+        write!(f, "{} \"", self.variable)?;
         const TABLE: [char; 4] = ['?', '0', '1', 'X'];
         for idx in 0..self.buffer.len() {
+            if idx > 0 && idx % size == 0 {
+                write!(f, " ")?;
+            }
             let val = self.buffer.get(idx);
             write!(f, "{}", TABLE[val as usize])?;
         }
@@ -75,7 +88,7 @@ impl Solver {
         let relations = theory
             .variables
             .iter()
-            .map(|var| Relation::new(size, var.arity))
+            .map(|var| Relation::new(var.clone(), size))
             .collect();
         Self {
             theory,
@@ -84,14 +97,18 @@ impl Solver {
         }
     }
 
-    pub fn get_relation(&mut self, var: isize) -> &mut Relation {
-        assert!(var >= 1);
-        &mut self.relations[var as usize - 1]
+    pub fn get_relation(&mut self, var: &Variable) -> Option<&mut Relation> {
+        for rel in self.relations.iter_mut() {
+            if std::ptr::eq(&*rel.variable, var) {
+                return Some(rel);
+            }
+        }
+        None
     }
 
     pub fn print(&self) {
-        for (idx, rel) in self.relations.iter().enumerate() {
-            println!("relation: {} {}", self.theory.variables[idx].name, rel);
+        for rel in self.relations.iter() {
+            println!("relation: {}", rel);
         }
     }
 }

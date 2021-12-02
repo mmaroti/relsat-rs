@@ -35,49 +35,64 @@ fn main() {
     theory.add_clause(
         6,
         vec![
-            (-mul, vec![0, 1, 3]),
-            (-mul, vec![3, 2, 4]),
-            (-mul, vec![1, 2, 5]),
-            (mul, vec![0, 5, 4]),
+            (false, &mul, vec![0, 1, 3]),
+            (false, &mul, vec![3, 2, 4]),
+            (false, &mul, vec![1, 2, 5]),
+            (true, &mul, vec![0, 5, 4]),
         ],
     );
 
     theory.add_clause(
         6,
         vec![
-            (-mul, vec![1, 2, 3]),
-            (-mul, vec![0, 3, 4]),
-            (-mul, vec![0, 1, 5]),
-            (mul, vec![5, 2, 4]),
+            (false, &mul, vec![1, 2, 3]),
+            (false, &mul, vec![0, 3, 4]),
+            (false, &mul, vec![0, 1, 5]),
+            (true, &mul, vec![5, 2, 4]),
         ],
     );
 
     theory.add_clause(
         3,
-        vec![(-inv, vec![0, 1]), (-mul, vec![1, 0, 2]), (one, vec![2])],
+        vec![
+            (false, &inv, vec![0, 1]),
+            (false, &mul, vec![1, 0, 2]),
+            (true, &one, vec![2]),
+        ],
     );
 
-    theory.add_clause(2, vec![(-one, vec![0]), (mul, vec![0, 1, 1])]);
+    theory.add_clause(2, vec![(false, &one, vec![0]), (true, &mul, vec![0, 1, 1])]);
 
     theory.add_clause(
         4,
         vec![
-            (-mul, vec![0, 1, 2]),
-            (-mul, vec![0, 1, 3]),
-            (equ, vec![2, 3]),
+            (false, &mul, vec![0, 1, 2]),
+            (false, &mul, vec![0, 1, 3]),
+            (true, &equ, vec![2, 3]),
         ],
     );
 
     theory.add_clause(
         3,
-        vec![(-inv, vec![0, 1]), (-inv, vec![0, 2]), (equ, vec![1, 2])],
+        vec![
+            (false, &inv, vec![0, 1]),
+            (false, &inv, vec![0, 2]),
+            (true, &equ, vec![1, 2]),
+        ],
     );
 
-    theory.add_clause(2, vec![(-one, vec![0]), (-one, vec![1]), (equ, vec![0, 1])]);
+    theory.add_clause(
+        2,
+        vec![
+            (false, &one, vec![0]),
+            (false, &one, vec![1]),
+            (true, &equ, vec![0, 1]),
+        ],
+    );
 
     theory.print();
 
     let mut solver = Solver::new(theory, 2);
-    solver.get_relation(equ).set_equ();
+    solver.get_relation(&equ).unwrap().set_equ();
     solver.print();
 }
