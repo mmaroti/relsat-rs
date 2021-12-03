@@ -89,6 +89,11 @@ impl Shape {
     pub fn positions(&self) -> Range<usize> {
         0..self.size
     }
+
+    /// Creates the default view of this shape.
+    pub fn view(&self) -> View {
+        View::new(self)
+    }
 }
 
 /// The shape of a view into a tensor, which is a list of dimensions and the

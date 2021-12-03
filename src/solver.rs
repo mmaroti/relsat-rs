@@ -92,7 +92,7 @@ pub struct Constraint {
 }
 
 impl Constraint {
-    pub fn new(clause: Rc<Clause>) -> Self {
+    pub fn new(_clause: &Clause) -> Self {
         Self {
             polymers: Default::default(),
         }
@@ -117,7 +117,7 @@ impl Solver {
         let constraints = theory
             .clauses
             .iter()
-            .map(|cla| Constraint::new(cla.clone()))
+            .map(|cla| Constraint::new(cla))
             .collect();
         Self {
             theory,
