@@ -20,11 +20,10 @@
 mod buffer;
 mod shape;
 mod solver;
-mod solver2;
 mod theory;
 mod tokenizer;
 
-use solver2::*;
+use solver::*;
 
 fn main() {
     let mut sol: Solver = Default::default();
@@ -73,6 +72,9 @@ fn main() {
         (false, &one, vec![1]),
         (true, &equ, vec![0, 1]),
     ]);
+
+    equ.set_equality();
+    one.set_value(&[0], true);
 
     sol.print();
 }

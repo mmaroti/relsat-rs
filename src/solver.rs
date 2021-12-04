@@ -21,124 +21,241 @@ use std::rc::Rc;
 
 use super::buffer::Buffer2;
 use super::shape::{Shape, View};
-use super::theory::{Clause, Literal, Theory, Variable};
 
 #[derive(Debug)]
-pub struct Relation {
-    variable: Rc<Variable>,
-    buffer: RefCell<Buffer2>,
-    shape: Shape,
+pub struct Domain {
+    name: String,
+    size: usize,
 }
 
-impl Relation {
-    fn new(variable: Rc<Variable>, size: usize) -> Self {
-        let shape = Shape::new(vec![size; variable.arity]);
-        let buffer = RefCell::new(Buffer2::new(shape.size(), 2));
-        Self {
-            variable,
-            buffer,
-            shape,
-        }
+impl Domain {
+    pub fn new(name: &str, size: usize) -> Self {
+        let name = name.to_string();
+        Self { name, size }
     }
 
-    fn size(&self) -> usize {
-        if self.shape.rank() > 0 {
-            self.shape[0]
-        } else {
-            1
-        }
-    }
-
-    pub fn set_equ(&self) {
-        assert!(self.shape.rank() == 2);
-        let size = self.shape[0];
-        let mut buffer = self.buffer.borrow_mut();
-        for i in 0..size {
-            for j in 0..size {
-                let pos = self.shape.position(&[i, j]);
-                buffer.set(pos, if i == j { 1 } else { 0 })
-            }
-        }
+    pub fn eq(dom1: &Rc<Domain>, dom2: &Rc<Domain>) -> bool {
+        std::ptr::eq(&**dom1, &**dom2)
     }
 }
 
-impl fmt::Display for Relation {
+impl fmt::Display for Domain {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} \"", self.variable)?;
-        let size = self.size();
-        let buffer = self.buffer.borrow();
-        const FORMAT: [char; 4] = ['0', '1', '?', 'X'];
-        for idx in 0..buffer.len() {
-            if idx > 0 && idx % size == 0 {
+        write!(f, "{} = {}", self.name, self.size)
+    }
+}
+
+#[derive(Debug)]
+pub struct Variable {
+    name: String,
+    domains: Vec<Rc<Domain>>,
+    shape: Shape,
+    buffer: RefCell<Buffer2>,
+}
+
+impl Variable {
+    const UNDEF: u32 = 0;
+    const FALSE: u32 = 1;
+    const TRUE: u32 = 2;
+
+    pub fn new(name: &str, domains: Vec<Rc<Domain>>) -> Self {
+        let name = name.to_string();
+        let shape = Shape::new(domains.iter().map(|d| d.size).collect());
+        let buffer = RefCell::new(Buffer2::new(shape.size(), Variable::UNDEF));
+        Self {
+            name,
+            domains,
+            shape,
+            buffer,
+        }
+    }
+
+    pub fn set_equality(&self) {
+        assert!(self.shape.rank() == 2 && self.shape[0] == self.shape[1]);
+        let size = self.shape[0];
+
+        let mut buffer = self.buffer.borrow_mut();
+        buffer.fill(Variable::FALSE);
+        for i in 0..size {
+            buffer.set(i * (size + 1), Variable::TRUE);
+        }
+    }
+
+    pub fn set_value(&self, indices: &[usize], value: bool) {
+        let pos = self.shape.position(indices);
+        let mut buffer = self.buffer.borrow_mut();
+        buffer.set(
+            pos,
+            if value {
+                Variable::TRUE
+            } else {
+                Variable::FALSE
+            },
+        );
+    }
+}
+
+impl fmt::Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}(", self.name)?;
+        let mut first = true;
+        for dom in &self.domains {
+            if first {
+                first = false;
+            } else {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", dom.name)?;
+        }
+        write!(f, ") = {}", self.buffer.borrow())
+    }
+}
+
+#[derive(Debug)]
+pub struct Literal {
+    variable: Rc<Variable>,
+    indices: Box<[usize]>,
+    view: View,
+    sign: bool,
+}
+
+impl Literal {
+    pub fn new(shape: &Shape, sign: bool, var: &Rc<Variable>, indices: Vec<usize>) -> Self {
+        let variable = var.clone();
+        let indices = indices.into_boxed_slice();
+        let view = variable.shape.view().polymer(shape, &indices);
+        Literal {
+            variable,
+            indices,
+            view,
+            sign,
+        }
+    }
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}{}(",
+            if self.sign { '+' } else { '-' },
+            self.variable.name
+        )?;
+        let mut first = true;
+        for &idx in self.indices.iter() {
+            if first {
+                first = false;
+            } else {
+                write!(f, ",")?;
+            }
+            write!(f, "x{}", idx)?;
+        }
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug)]
+pub struct Clause {
+    domains: Vec<Rc<Domain>>,
+    literals: Vec<Literal>,
+    shape: Shape,
+    buffer: RefCell<Buffer2>,
+}
+
+impl Clause {
+    const FALSE: u32 = 0; // all false
+    const UNDEF1: u32 = 1; // exactly one undef
+    const UNDEF2: u32 = 2; // two or more undef
+    const TRUE: u32 = 3; // at least one true
+
+    pub fn new(shape: Shape, domains: Vec<Rc<Domain>>, literals: Vec<Literal>) -> Self {
+        let buffer = RefCell::new(Buffer2::new(shape.size(), Clause::FALSE));
+        Self {
+            shape,
+            domains,
+            literals,
+            buffer,
+        }
+    }
+}
+
+impl fmt::Display for Clause {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut first = true;
+        for lit in self.literals.iter() {
+            if first {
+                first = false;
+            } else {
                 write!(f, " ")?;
             }
-            let val = buffer.get(idx);
-            write!(f, "{}", FORMAT[val as usize])?;
+            write!(f, "{}", lit)?;
         }
-        write!(f, "\"")
+        Ok(())
     }
 }
 
-#[derive(Debug)]
-pub struct Polymer {
-    relation: Rc<Relation>,
-    literal: Rc<Literal>,
-    view: View,
-}
-
-#[derive(Debug)]
-pub struct Constraint {
-    polymers: Vec<Rc<Polymer>>,
-}
-
-impl Constraint {
-    pub fn new(_clause: &Clause) -> Self {
-        Self {
-            polymers: Default::default(),
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Solver {
-    theory: Theory,
-    size: usize,
-    relations: Vec<Rc<Relation>>,
-    constraints: Vec<Constraint>,
+    domains: Vec<Rc<Domain>>,
+    variables: Vec<Rc<Variable>>,
+    clauses: Vec<Clause>,
 }
 
 impl Solver {
-    pub fn new(theory: Theory, size: usize) -> Self {
-        let relations = theory
-            .variables
-            .iter()
-            .map(|var| Rc::new(Relation::new(var.clone(), size)))
-            .collect();
-        let constraints = theory
-            .clauses
-            .iter()
-            .map(|cla| Constraint::new(cla))
-            .collect();
-        Self {
-            theory,
-            size,
-            relations,
-            constraints,
-        }
+    pub fn add_domain(&mut self, name: &str, size: usize) -> Rc<Domain> {
+        assert!(self.domains.iter().all(|dom| dom.name != name));
+        let dom = Rc::new(Domain::new(name, size));
+        self.domains.push(dom.clone());
+        dom
     }
 
-    pub fn get_relation(&self, var: &Variable) -> Option<Rc<Relation>> {
-        for rel in self.relations.iter() {
-            if std::ptr::eq(&*rel.variable, var) {
-                return Some(rel.clone());
+    pub fn add_variable(&mut self, name: &str, domains: Vec<&Rc<Domain>>) -> Rc<Variable> {
+        assert!(self.variables.iter().all(|rel| rel.name != name));
+        let domains = domains.into_iter().cloned().collect();
+        let rel = Rc::new(Variable::new(name, domains));
+        self.variables.push(rel.clone());
+        rel
+    }
+
+    pub fn add_clause(&mut self, literals: Vec<(bool, &Rc<Variable>, Vec<usize>)>) {
+        let mut domains: Vec<Option<Rc<Domain>>> = Default::default();
+        for (_, var, indices) in literals.iter() {
+            assert_eq!(var.domains.len(), indices.len());
+            for (pos, &idx) in indices.iter().enumerate() {
+                if domains.len() <= idx {
+                    domains.resize(idx + 1, None);
+                }
+                let dom1 = &var.domains[pos];
+                let dom2 = &mut domains[idx];
+                if dom2.is_none() {
+                    *dom2 = Some(dom1.clone());
+                } else {
+                    let dom2 = dom2.as_ref().unwrap();
+                    assert!(Domain::eq(dom1, dom2));
+                }
             }
         }
-        None
+        let domains: Vec<Rc<Domain>> = domains.into_iter().map(|d| d.unwrap()).collect();
+
+        let shape = Shape::new(domains.iter().map(|d| d.size).collect());
+        let literals: Vec<Literal> = literals
+            .into_iter()
+            .map(|(sign, var, indices)| Literal::new(&shape, sign, var, indices))
+            .collect();
+
+        let cla = Clause::new(shape, domains, literals);
+        self.clauses.push(cla);
     }
 
     pub fn print(&self) {
-        for rel in self.relations.iter() {
-            println!("relation: {}", rel);
+        for dom in self.domains.iter() {
+            println!("domain {}", dom);
+        }
+        for rel in self.variables.iter() {
+            println!("variable {}", rel);
+        }
+        for cla in self.clauses.iter() {
+            println!("clause {}", cla);
         }
     }
 }
