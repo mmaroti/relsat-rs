@@ -91,20 +91,20 @@ impl Shape {
     }
 
     /// Creates the default view of this shape.
-    pub fn view(&self) -> View {
-        View::new(self)
+    pub fn view(&self) -> ShapeView {
+        ShapeView::new(self)
     }
 }
 
 /// The shape of a view into a tensor, which is a list of dimensions and the
 /// corresponding strides.
 #[derive(PartialEq, Eq, Debug)]
-pub struct View {
+pub struct ShapeView {
     strides: Box<[(usize, usize)]>, // dim, stride
     offset: usize,
 }
 
-impl View {
+impl ShapeView {
     /// Creates the canonical view of the given shape, which is the fortran order,
     /// where the first coordinate has stride 1.
     pub fn new(shape: &Shape) -> Self {
@@ -150,8 +150,8 @@ impl View {
 
     /// Returns an iterator through all valid positions, size many in total.
     /// You might want to call `simplify` before to speed up the iteration.
-    pub fn positions(&self) -> Iter {
-        Iter::new(self)
+    pub fn positions(&self) -> ShapeIter {
+        ShapeIter::new(self)
     }
 
     /// Returns the shape of this view as a new object.
@@ -219,17 +219,17 @@ impl View {
     }
 }
 
-/// View iterator that returns all valid positions, size many in total.
+/// ShapeView iterator that returns all valid positions, size many in total.
 #[derive(Debug)]
-pub struct Iter {
+pub struct ShapeIter {
     index: usize,
     entries: Box<[(usize, usize, usize)]>, // coord, dim, stride
     done: bool,
 }
 
-impl Iter {
+impl ShapeIter {
     /// Creates a new iterator for the given view.
-    fn new(view: &View) -> Self {
+    fn new(view: &ShapeView) -> Self {
         let mut done = false;
         let entries = view
             .strides
@@ -249,7 +249,7 @@ impl Iter {
     }
 
     /// Resets the iterator to the first element.
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.done = false;
         for e in self.entries.iter_mut() {
             self.done |= e.1 == 0;
@@ -259,7 +259,7 @@ impl Iter {
     }
 }
 
-impl Iterator for Iter {
+impl Iterator for ShapeIter {
     type Item = usize;
 
     fn next(&mut self) -> Option<usize> {

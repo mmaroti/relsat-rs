@@ -20,7 +20,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use super::buffer::Buffer2;
-use super::shape::{Shape, View};
+use super::shape::{Shape, ShapeIter};
 
 #[derive(Debug)]
 pub struct Domain {
@@ -93,6 +93,10 @@ impl Variable {
             },
         );
     }
+
+    pub fn print_table(&self) {
+        
+    }
 }
 
 impl fmt::Display for Variable {
@@ -115,7 +119,7 @@ impl fmt::Display for Variable {
 pub struct Literal {
     variable: Rc<Variable>,
     indices: Box<[usize]>,
-    view: View,
+    positions: RefCell<ShapeIter>,
     sign: bool,
 }
 
@@ -123,13 +127,62 @@ impl Literal {
     pub fn new(shape: &Shape, sign: bool, var: &Rc<Variable>, indices: Vec<usize>) -> Self {
         let variable = var.clone();
         let indices = indices.into_boxed_slice();
-        let view = variable.shape.view().polymer(shape, &indices);
+        let positions = RefCell::new(
+            variable
+                .shape
+                .view()
+                .polymer(shape, &indices)
+                .simplify()
+                .positions(),
+        );
         Literal {
             variable,
             indices,
-            view,
+            positions,
             sign,
         }
+    }
+
+    const PATTERN_POS: u32 = Buffer2::pattern(&[
+        (Clause::FALSE, Variable::UNDEF, Clause::UNIT1),
+        (Clause::FALSE, Variable::FALSE, Clause::FALSE),
+        (Clause::FALSE, Variable::TRUE, Clause::TRUE),
+        (Clause::UNIT1, Variable::UNDEF, Clause::UNIT2),
+        (Clause::UNIT1, Variable::FALSE, Clause::UNIT1),
+        (Clause::UNIT1, Variable::TRUE, Clause::TRUE),
+        (Clause::UNIT2, Variable::UNDEF, Clause::UNIT2),
+        (Clause::UNIT2, Variable::FALSE, Clause::UNIT2),
+        (Clause::UNIT2, Variable::TRUE, Clause::TRUE),
+        (Clause::TRUE, Variable::UNDEF, Clause::TRUE),
+        (Clause::TRUE, Variable::FALSE, Clause::TRUE),
+        (Clause::TRUE, Variable::TRUE, Clause::TRUE),
+    ]);
+
+    const PATTERN_NEG: u32 = Buffer2::pattern(&[
+        (Clause::FALSE, Variable::UNDEF, Clause::UNIT1),
+        (Clause::FALSE, Variable::TRUE, Clause::FALSE),
+        (Clause::FALSE, Variable::FALSE, Clause::TRUE),
+        (Clause::UNIT1, Variable::UNDEF, Clause::UNIT2),
+        (Clause::UNIT1, Variable::TRUE, Clause::UNIT1),
+        (Clause::UNIT1, Variable::FALSE, Clause::TRUE),
+        (Clause::UNIT2, Variable::UNDEF, Clause::UNIT2),
+        (Clause::UNIT2, Variable::TRUE, Clause::UNIT2),
+        (Clause::UNIT2, Variable::FALSE, Clause::TRUE),
+        (Clause::TRUE, Variable::UNDEF, Clause::TRUE),
+        (Clause::TRUE, Variable::TRUE, Clause::TRUE),
+        (Clause::TRUE, Variable::FALSE, Clause::TRUE),
+    ]);
+
+    pub fn evaluate(&self, target: &mut Buffer2) {
+        let source = self.variable.buffer.borrow();
+        let mut positions = self.positions.borrow_mut();
+        positions.reset();
+        let pattern = if self.sign {
+            Literal::PATTERN_POS
+        } else {
+            Literal::PATTERN_NEG
+        };
+        target.update(pattern, &*source, &mut *positions);
     }
 }
 
@@ -164,8 +217,8 @@ pub struct Clause {
 
 impl Clause {
     const FALSE: u32 = 0; // all false
-    const UNDEF1: u32 = 1; // exactly one undef
-    const UNDEF2: u32 = 2; // two or more undef
+    const UNIT1: u32 = 1; // exactly one undef
+    const UNIT2: u32 = 2; // two or more undef
     const TRUE: u32 = 3; // at least one true
 
     pub fn new(shape: Shape, domains: Vec<Rc<Domain>>, literals: Vec<Literal>) -> Self {
@@ -175,6 +228,14 @@ impl Clause {
             domains,
             literals,
             buffer,
+        }
+    }
+
+    pub fn evaluate(&self) {
+        let mut buffer = self.buffer.borrow_mut();
+        buffer.fill(Clause::FALSE);
+        for lit in self.literals.iter() {
+            lit.evaluate(&mut *buffer);
         }
     }
 }
@@ -190,7 +251,7 @@ impl fmt::Display for Clause {
             }
             write!(f, "{}", lit)?;
         }
-        Ok(())
+        write!(f, " = {}", self.buffer.borrow())
     }
 }
 
@@ -245,6 +306,12 @@ impl Solver {
 
         let cla = Clause::new(shape, domains, literals);
         self.clauses.push(cla);
+    }
+
+    pub fn evaluate(&self) {
+        for cla in self.clauses.iter() {
+            cla.evaluate();
+        }
     }
 
     pub fn print(&self) {

@@ -27,7 +27,7 @@ use solver::*;
 
 fn main() {
     let mut sol: Solver = Default::default();
-    let set = sol.add_domain("set", 3);
+    let set = sol.add_domain("set", 2);
     let equ = sol.add_variable("equ", vec![&set, &set]);
     let mul = sol.add_variable("mul", vec![&set, &set, &set]);
     let inv = sol.add_variable("inv", vec![&set, &set]);
@@ -75,6 +75,10 @@ fn main() {
 
     equ.set_equality();
     one.set_value(&[0], true);
+    one.set_value(&[1], false);
+    mul.set_value(&[0, 0, 0], true);
+    mul.set_value(&[1, 0, 1], true);
+    sol.evaluate();
 
     sol.print();
 }
