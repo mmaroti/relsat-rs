@@ -54,6 +54,8 @@ pub struct Variable {
 }
 
 impl Variable {
+    const FORMAT: [char; 4] = ['?', '0', '1', 'X'];
+
     const UNDEF: u32 = 0;
     const FALSE: u32 = 1;
     const TRUE: u32 = 2;
@@ -95,7 +97,13 @@ impl Variable {
     }
 
     pub fn print_table(&self) {
-        
+        let buffer = self.buffer.borrow();
+        let mut cor = vec![0; self.shape.rank()];
+        for pos in 0..self.shape.size() {
+            self.shape.coordinates(pos, &mut cor);
+            let val = Variable::FORMAT[buffer.get(pos) as usize];
+            println!("  {:?} = {}", cor, val);
+        }
     }
 }
 
@@ -216,6 +224,8 @@ pub struct Clause {
 }
 
 impl Clause {
+    const FORMAT: [char; 4] = ['0', 'U', '?', '1'];
+
     const FALSE: u32 = 0; // all false
     const UNIT1: u32 = 1; // exactly one undef
     const UNIT2: u32 = 2; // two or more undef
@@ -236,6 +246,16 @@ impl Clause {
         buffer.fill(Clause::FALSE);
         for lit in self.literals.iter() {
             lit.evaluate(&mut *buffer);
+        }
+    }
+
+    pub fn print_table(&self) {
+        let buffer = self.buffer.borrow();
+        let mut cor = vec![0; self.shape.rank()];
+        for pos in 0..self.shape.size() {
+            self.shape.coordinates(pos, &mut cor);
+            let val = Clause::FORMAT[buffer.get(pos) as usize];
+            println!("  {:?} = {}", cor, val);
         }
     }
 }
@@ -318,11 +338,13 @@ impl Solver {
         for dom in self.domains.iter() {
             println!("domain {}", dom);
         }
-        for rel in self.variables.iter() {
-            println!("variable {}", rel);
+        for var in self.variables.iter() {
+            println!("variable {}", var);
+            var.print_table();
         }
         for cla in self.clauses.iter() {
             println!("clause {}", cla);
+            cla.print_table();
         }
     }
 }

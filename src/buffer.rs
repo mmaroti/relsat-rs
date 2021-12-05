@@ -171,7 +171,6 @@ where
                 let mut val: u32 = self.buffer.get(pos);
                 let mut idx = 2;
                 while let Some(pos) = self.iter.next() {
-                    println!("{} {}", pos, idx);
                     val |= self.buffer.get(pos) << idx;
                     idx += 2;
                     if idx >= 32 {

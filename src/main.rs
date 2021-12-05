@@ -34,36 +34,36 @@ fn main() {
     let one = sol.add_variable("one", vec![&set]);
 
     sol.add_clause(vec![
-        (false, &mul, vec![3, 0, 1]),
-        (false, &mul, vec![4, 3, 2]),
-        (false, &mul, vec![5, 1, 2]),
-        (true, &mul, vec![4, 0, 5]),
+        (false, &mul, vec![0, 1, 3]),
+        (false, &mul, vec![3, 2, 4]),
+        (false, &mul, vec![1, 2, 5]),
+        (true, &mul, vec![0, 5, 4]),
     ]);
 
     sol.add_clause(vec![
-        (false, &mul, vec![3, 1, 2]),
-        (false, &mul, vec![4, 0, 3]),
-        (false, &mul, vec![5, 0, 1]),
-        (true, &mul, vec![4, 5, 2]),
+        (false, &mul, vec![1, 2, 3]),
+        (false, &mul, vec![0, 3, 4]),
+        (false, &mul, vec![0, 1, 5]),
+        (true, &mul, vec![5, 2, 4]),
     ]);
 
     sol.add_clause(vec![
-        (false, &inv, vec![1, 0]),
-        (false, &mul, vec![2, 1, 0]),
+        (false, &inv, vec![0, 1]),
+        (false, &mul, vec![1, 0, 2]),
         (true, &one, vec![2]),
     ]);
 
-    sol.add_clause(vec![(false, &one, vec![0]), (true, &mul, vec![1, 0, 1])]);
+    sol.add_clause(vec![(false, &one, vec![0]), (true, &mul, vec![0, 1, 1])]);
 
     sol.add_clause(vec![
-        (false, &mul, vec![2, 0, 1]),
-        (false, &mul, vec![3, 0, 1]),
+        (false, &mul, vec![0, 1, 2]),
+        (false, &mul, vec![0, 1, 3]),
         (true, &equ, vec![2, 3]),
     ]);
 
     sol.add_clause(vec![
-        (false, &inv, vec![1, 0]),
-        (false, &inv, vec![2, 0]),
+        (false, &inv, vec![0, 1]),
+        (false, &inv, vec![0, 2]),
         (true, &equ, vec![1, 2]),
     ]);
 
@@ -77,7 +77,19 @@ fn main() {
     one.set_value(&[0], true);
     one.set_value(&[1], false);
     mul.set_value(&[0, 0, 0], true);
-    mul.set_value(&[1, 0, 1], true);
+    mul.set_value(&[0, 0, 1], false);
+    mul.set_value(&[0, 1, 1], true);
+    mul.set_value(&[0, 1, 0], false);
+    inv.set_value(&[1, 0], false);
+
+    mul.set_value(&[1, 1, 1], true);
+    mul.set_value(&[1, 1, 0], false);
+    inv.set_value(&[1, 1], false);
+
+    inv.set_value(&[0, 1], true);
+    inv.set_value(&[0, 0], false);
+    mul.set_value(&[1, 0, 1], false);
+
     sol.evaluate();
 
     sol.print();

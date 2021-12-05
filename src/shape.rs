@@ -61,7 +61,8 @@ impl Shape {
     }
 
     /// Returns the position in a flat array of the given set of coordinates.
-    /// The length of the coordinates must match the rank.
+    /// The length of the coordinates must match the rank. The last coordinate
+    /// is advancing the fastest.
     pub fn position(&self, coordinates: &[usize]) -> usize {
         debug_assert!(coordinates.len() == self.dimensions.len());
         let mut n = 0;
@@ -73,7 +74,8 @@ impl Shape {
     }
 
     /// Sets the coordinates that correspond to the given position. The length
-    /// of the coordinates must match the rank.
+    /// of the coordinates must match the rank. The last coordinate is
+    /// advancing the fastest.
     pub fn coordinates(&self, mut position: usize, coordinates: &mut [usize]) {
         debug_assert!(position < self.size);
         debug_assert!(coordinates.len() == self.dimensions.len());
@@ -105,21 +107,16 @@ pub struct ShapeView {
 }
 
 impl ShapeView {
-    /// Creates the canonical view of the given shape, which is the fortran order,
-    /// where the first coordinate has stride 1.
+    /// Creates the canonical view of the given shape, where the last coordinate
+    /// is advancing the fastest.
     pub fn new(shape: &Shape) -> Self {
-        let mut s = 1;
-        let strides = shape
-            .dimensions
-            .iter()
-            .map(|&d| {
-                let t = s;
-                s *= d;
-                (d, t)
-            })
-            .collect();
-        let offset = 0;
-        Self { strides, offset }
+        let mut strides: Box<[(usize, usize)]> = shape.dimensions.iter().map(|&d| (d, 0)).collect();
+        let mut t = 1;
+        for mut e in strides.iter_mut().rev() {
+            e.1 = t;
+            t *= e.0;
+        }
+        Self { strides, offset: 0 }
     }
 
     /// Returns the number of dimensions.
@@ -202,9 +199,10 @@ impl ShapeView {
                 strides[0] = (0, 0);
                 break;
             }
-            let s = strides[tail].0 * strides[tail].1;
-            if s == strides[head].1 {
+            let s = strides[head].0 * strides[head].1;
+            if s == strides[tail].1 {
                 strides[tail].0 *= strides[head].0;
+                strides[tail].1 = strides[head].1;
             } else {
                 tail += 1;
                 strides[tail] = strides[head];
@@ -234,6 +232,7 @@ impl ShapeIter {
         let entries = view
             .strides
             .iter()
+            .rev()
             .map(|&(d, s)| {
                 done |= d == 0;
                 (0, d, s)
@@ -280,5 +279,40 @@ impl Iterator for ShapeIter {
             self.done = true;
             Some(index)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shape() {
+        let shape = Shape::new(vec![2, 3, 4]);
+        let pos1: Vec<usize> = shape.positions().collect();
+
+        let view = shape.view();
+        assert_eq!(view.shape(), shape);
+        assert_eq!(view.size(), shape.size());
+        assert_eq!(view.rank(), shape.rank());
+        let pos2: Vec<usize> = view.positions().collect();
+        assert_eq!(pos1, pos2);
+
+        let view = shape.view().simplify();
+        assert_eq!(view.shape(), Shape::new(vec![shape.size()]));
+        assert_eq!(view.size(), shape.size());
+        assert_eq!(view.rank(), 1);
+        let pos2: Vec<usize> = view.positions().collect();
+        assert_eq!(pos1, pos2);
+
+        let view = shape.view().permute(&[2, 0, 1]);
+        assert_eq!(view.shape(), Shape::new(vec![3, 4, 2]));
+        assert_eq!(view.size(), shape.size());
+        assert_eq!(view.rank(), shape.rank());
+        let pos2: Vec<usize> = view.positions().collect();
+        let pos3 = vec![
+            0, 12, 1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23,
+        ];
+        assert_eq!(pos2, pos3);
     }
 }
