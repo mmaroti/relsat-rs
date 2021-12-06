@@ -17,6 +17,7 @@
 
 #![allow(dead_code)]
 
+mod bitops;
 mod buffer;
 mod shape;
 mod solver;

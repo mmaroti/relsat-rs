@@ -134,16 +134,20 @@ impl Buffer2 {
     /// original value, the second is the other value, and the third
     /// is the new value replacing the original one.
     pub const fn pattern(cases: &[(u32, u32, u32)]) -> u32 {
-        let mut val = 0;
+        assert!(cases.len() == 16);
+        let mut set: u32 = 0;
+        let mut val: u32 = 0;
         let mut idx = 0;
         while idx < cases.len() {
             let (a, b, c) = cases[idx];
             assert!(a <= 3 && b <= 3 && c <= 3);
             let pos = (a << 3) | (b << 1);
-            assert!(val & (3 << pos) == 0);
+            assert!(set & (3 << pos) == 0);
+            set |= 3 << pos;
             val |= c << pos;
             idx += 1;
         }
+        assert!(set == 0xffffffff);
         val
     }
 }

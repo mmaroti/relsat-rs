@@ -54,11 +54,12 @@ pub struct Variable {
 }
 
 impl Variable {
-    const FORMAT: [char; 4] = ['?', '0', '1', 'X'];
+    const FORMAT: [char; 4] = ['0', '?', '1', 'X'];
 
-    const UNDEF: u32 = 0;
-    const FALSE: u32 = 1;
+    const FALSE: u32 = 0;
+    const UNDEF: u32 = 1;
     const TRUE: u32 = 2;
+    const ERROR: u32 = 3;
 
     pub fn new(name: &str, domains: Vec<Rc<Domain>>) -> Self {
         let name = name.to_string();
@@ -152,33 +153,41 @@ impl Literal {
     }
 
     const PATTERN_POS: u32 = Buffer2::pattern(&[
-        (Clause::FALSE, Variable::UNDEF, Clause::UNIT1),
+        (Clause::FALSE, Variable::UNDEF, Clause::UNIT),
         (Clause::FALSE, Variable::FALSE, Clause::FALSE),
         (Clause::FALSE, Variable::TRUE, Clause::TRUE),
-        (Clause::UNIT1, Variable::UNDEF, Clause::UNIT2),
-        (Clause::UNIT1, Variable::FALSE, Clause::UNIT1),
-        (Clause::UNIT1, Variable::TRUE, Clause::TRUE),
-        (Clause::UNIT2, Variable::UNDEF, Clause::UNIT2),
-        (Clause::UNIT2, Variable::FALSE, Clause::UNIT2),
-        (Clause::UNIT2, Variable::TRUE, Clause::TRUE),
+        (Clause::FALSE, Variable::ERROR, Clause::FALSE),
+        (Clause::UNIT, Variable::UNDEF, Clause::UNDEF),
+        (Clause::UNIT, Variable::FALSE, Clause::UNIT),
+        (Clause::UNIT, Variable::TRUE, Clause::TRUE),
+        (Clause::UNIT, Variable::ERROR, Clause::FALSE),
+        (Clause::UNDEF, Variable::UNDEF, Clause::UNDEF),
+        (Clause::UNDEF, Variable::FALSE, Clause::UNDEF),
+        (Clause::UNDEF, Variable::TRUE, Clause::TRUE),
+        (Clause::UNDEF, Variable::ERROR, Clause::FALSE),
         (Clause::TRUE, Variable::UNDEF, Clause::TRUE),
         (Clause::TRUE, Variable::FALSE, Clause::TRUE),
         (Clause::TRUE, Variable::TRUE, Clause::TRUE),
+        (Clause::TRUE, Variable::ERROR, Clause::FALSE),
     ]);
 
     const PATTERN_NEG: u32 = Buffer2::pattern(&[
-        (Clause::FALSE, Variable::UNDEF, Clause::UNIT1),
+        (Clause::FALSE, Variable::UNDEF, Clause::UNIT),
         (Clause::FALSE, Variable::TRUE, Clause::FALSE),
         (Clause::FALSE, Variable::FALSE, Clause::TRUE),
-        (Clause::UNIT1, Variable::UNDEF, Clause::UNIT2),
-        (Clause::UNIT1, Variable::TRUE, Clause::UNIT1),
-        (Clause::UNIT1, Variable::FALSE, Clause::TRUE),
-        (Clause::UNIT2, Variable::UNDEF, Clause::UNIT2),
-        (Clause::UNIT2, Variable::TRUE, Clause::UNIT2),
-        (Clause::UNIT2, Variable::FALSE, Clause::TRUE),
+        (Clause::FALSE, Variable::ERROR, Clause::FALSE),
+        (Clause::UNIT, Variable::UNDEF, Clause::UNDEF),
+        (Clause::UNIT, Variable::TRUE, Clause::UNIT),
+        (Clause::UNIT, Variable::FALSE, Clause::TRUE),
+        (Clause::UNIT, Variable::ERROR, Clause::FALSE),
+        (Clause::UNDEF, Variable::UNDEF, Clause::UNDEF),
+        (Clause::UNDEF, Variable::TRUE, Clause::UNDEF),
+        (Clause::UNDEF, Variable::FALSE, Clause::TRUE),
+        (Clause::UNDEF, Variable::ERROR, Clause::FALSE),
         (Clause::TRUE, Variable::UNDEF, Clause::TRUE),
         (Clause::TRUE, Variable::TRUE, Clause::TRUE),
         (Clause::TRUE, Variable::FALSE, Clause::TRUE),
+        (Clause::TRUE, Variable::ERROR, Clause::FALSE),
     ]);
 
     pub fn evaluate(&self, target: &mut Buffer2) {
@@ -224,11 +233,11 @@ pub struct Clause {
 }
 
 impl Clause {
-    const FORMAT: [char; 4] = ['0', 'U', '?', '1'];
+    const FORMAT: [char; 4] = ['0', '!', '?', '1'];
 
     const FALSE: u32 = 0; // all false
-    const UNIT1: u32 = 1; // exactly one undef
-    const UNIT2: u32 = 2; // two or more undef
+    const UNIT: u32 = 1; // exactly one undef
+    const UNDEF: u32 = 2; // two or more undef
     const TRUE: u32 = 3; // at least one true
 
     pub fn new(shape: Shape, domains: Vec<Rc<Domain>>, literals: Vec<Literal>) -> Self {
