@@ -28,7 +28,7 @@ use solver::*;
 
 fn main() {
     let mut sol: Solver = Default::default();
-    let set = sol.add_domain("set", 2);
+    let set = sol.add_domain("set", 3);
     let equ = sol.add_variable("equ", vec![&set, &set]);
     let mul = sol.add_variable("mul", vec![&set, &set, &set]);
     let inv = sol.add_variable("inv", vec![&set, &set]);
@@ -74,24 +74,20 @@ fn main() {
         (true, &equ, vec![0, 1]),
     ]);
 
+    // learnt
+    sol.add_clause(vec![
+        (false, &one, vec![0]),
+        (false, &mul, vec![1, 1, 0]),
+        (true, &mul, vec![1, 0, 1]),
+    ]);
+
     equ.set_equality();
     one.set_value(&[0], true);
-    one.set_value(&[1], false);
-    mul.set_value(&[0, 0, 0], true);
-    mul.set_value(&[0, 0, 1], false);
-    mul.set_value(&[0, 1, 1], true);
-    mul.set_value(&[0, 1, 0], false);
-    inv.set_value(&[1, 0], false);
-
-    mul.set_value(&[1, 1, 1], true);
-    mul.set_value(&[1, 1, 0], false);
-    inv.set_value(&[1, 1], false);
-
-    inv.set_value(&[0, 1], true);
-    inv.set_value(&[0, 0], false);
     mul.set_value(&[1, 0, 1], false);
+    // inv.set_value(&[1, 1], true);
+    // inv.set_value(&[0, 0], true);
+    // mul.set_value(&[1, 1, 0], true);
 
-    sol.evaluate();
-
+    sol.propagate();
     sol.print();
 }

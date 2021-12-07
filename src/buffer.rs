@@ -128,63 +128,6 @@ impl Buffer2 {
         }
         debug_assert!(last == self.len);
     }
-
-    /// Calculates the operation pattern. Each tuple corresponds to a
-    /// possible input output combination. The first element is the
-    /// original value, the second is the other value, and the third
-    /// is the new value replacing the original one.
-    pub const fn pattern(cases: &[(u32, u32, u32)]) -> u32 {
-        assert!(cases.len() == 16);
-        let mut set: u32 = 0;
-        let mut val: u32 = 0;
-        let mut idx = 0;
-        while idx < cases.len() {
-            let (a, b, c) = cases[idx];
-            assert!(a <= 3 && b <= 3 && c <= 3);
-            let pos = (a << 3) | (b << 1);
-            assert!(set & (3 << pos) == 0);
-            set |= 3 << pos;
-            val |= c << pos;
-            idx += 1;
-        }
-        assert!(set == 0xffffffff);
-        val
-    }
-}
-
-struct Reader2<'a, ITER>
-where
-    ITER: Iterator<Item = usize>,
-{
-    iter: &'a mut ITER,
-    buffer: &'a Buffer2,
-}
-
-impl<'a, ITER> Iterator for Reader2<'a, ITER>
-where
-    ITER: Iterator<Item = usize>,
-{
-    type Item = u32;
-
-    #[inline(always)]
-    #[allow(clippy::while_let_on_iterator)]
-    fn next(&mut self) -> Option<u32> {
-        match self.iter.next() {
-            None => None,
-            Some(pos) => {
-                let mut val: u32 = self.buffer.get(pos);
-                let mut idx = 2;
-                while let Some(pos) = self.iter.next() {
-                    val |= self.buffer.get(pos) << idx;
-                    idx += 2;
-                    if idx >= 32 {
-                        break;
-                    }
-                }
-                Some(val)
-            }
-        }
-    }
 }
 
 impl fmt::Display for Buffer2 {
@@ -235,33 +178,6 @@ mod tests {
         for i in 0..vec.len() {
             assert_eq!(buf1.get(i), 1);
             assert_eq!(buf2.get(i), 1);
-        }
-    }
-
-    #[test]
-    fn reader() {
-        let data = random(0xf1234567, 200);
-        let mut buf2 = Buffer2::new(data.len(), 0);
-        for i in 0..data.len() {
-            buf2.set(i, data[i] & 3);
-        }
-        for len in 0..data.len() {
-            let mut iter = 0..len;
-            let reader = Reader2 {
-                iter: &mut iter,
-                buffer: &buf2,
-            };
-            let out: Vec<u32> = reader.collect();
-            assert_eq!(out.len(), (len + 15) / 16);
-            for i in 0..(len + 15) / 16 {
-                let mut val = 0;
-                for j in 0..16 {
-                    if i * 16 + j < len {
-                        val |= buf2.get(i * 16 + j) << (2 * j);
-                    }
-                }
-                assert_eq!(val, out[i]);
-            }
         }
     }
 }

@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
+use super::bitops::*;
 use super::buffer::Buffer2;
 use super::shape::{Shape, ShapeIter};
 
@@ -54,17 +55,10 @@ pub struct Variable {
 }
 
 impl Variable {
-    const FORMAT: [char; 4] = ['0', '?', '1', 'X'];
-
-    const FALSE: u32 = 0;
-    const UNDEF: u32 = 1;
-    const TRUE: u32 = 2;
-    const ERROR: u32 = 3;
-
     pub fn new(name: &str, domains: Vec<Rc<Domain>>) -> Self {
         let name = name.to_string();
         let shape = Shape::new(domains.iter().map(|d| d.size).collect());
-        let buffer = RefCell::new(Buffer2::new(shape.size(), Variable::UNDEF));
+        let buffer = RefCell::new(Buffer2::new(shape.size(), BOOL_UNDEF));
         Self {
             name,
             domains,
@@ -78,23 +72,17 @@ impl Variable {
         let size = self.shape[0];
 
         let mut buffer = self.buffer.borrow_mut();
-        buffer.fill(Variable::FALSE);
+        buffer.fill(BOOL_FALSE);
         for i in 0..size {
-            buffer.set(i * (size + 1), Variable::TRUE);
+            buffer.set(i * (size + 1), BOOL_TRUE);
         }
     }
 
     pub fn set_value(&self, indices: &[usize], value: bool) {
         let pos = self.shape.position(indices);
         let mut buffer = self.buffer.borrow_mut();
-        buffer.set(
-            pos,
-            if value {
-                Variable::TRUE
-            } else {
-                Variable::FALSE
-            },
-        );
+        assert!(buffer.get(pos) == BOOL_UNDEF);
+        buffer.set(pos, if value { BOOL_TRUE } else { BOOL_FALSE });
     }
 
     pub fn print_table(&self) {
@@ -102,7 +90,7 @@ impl Variable {
         let mut cor = vec![0; self.shape.rank()];
         for pos in 0..self.shape.size() {
             self.shape.coordinates(pos, &mut cor);
-            let val = Variable::FORMAT[buffer.get(pos) as usize];
+            let val = BOOL_FORMAT[buffer.get(pos) as usize];
             println!("  {:?} = {}", cor, val);
         }
     }
@@ -152,54 +140,22 @@ impl Literal {
         }
     }
 
-    const PATTERN_POS: u32 = Buffer2::pattern(&[
-        (Clause::FALSE, Variable::UNDEF, Clause::UNIT),
-        (Clause::FALSE, Variable::FALSE, Clause::FALSE),
-        (Clause::FALSE, Variable::TRUE, Clause::TRUE),
-        (Clause::FALSE, Variable::ERROR, Clause::FALSE),
-        (Clause::UNIT, Variable::UNDEF, Clause::UNDEF),
-        (Clause::UNIT, Variable::FALSE, Clause::UNIT),
-        (Clause::UNIT, Variable::TRUE, Clause::TRUE),
-        (Clause::UNIT, Variable::ERROR, Clause::FALSE),
-        (Clause::UNDEF, Variable::UNDEF, Clause::UNDEF),
-        (Clause::UNDEF, Variable::FALSE, Clause::UNDEF),
-        (Clause::UNDEF, Variable::TRUE, Clause::TRUE),
-        (Clause::UNDEF, Variable::ERROR, Clause::FALSE),
-        (Clause::TRUE, Variable::UNDEF, Clause::TRUE),
-        (Clause::TRUE, Variable::FALSE, Clause::TRUE),
-        (Clause::TRUE, Variable::TRUE, Clause::TRUE),
-        (Clause::TRUE, Variable::ERROR, Clause::FALSE),
-    ]);
-
-    const PATTERN_NEG: u32 = Buffer2::pattern(&[
-        (Clause::FALSE, Variable::UNDEF, Clause::UNIT),
-        (Clause::FALSE, Variable::TRUE, Clause::FALSE),
-        (Clause::FALSE, Variable::FALSE, Clause::TRUE),
-        (Clause::FALSE, Variable::ERROR, Clause::FALSE),
-        (Clause::UNIT, Variable::UNDEF, Clause::UNDEF),
-        (Clause::UNIT, Variable::TRUE, Clause::UNIT),
-        (Clause::UNIT, Variable::FALSE, Clause::TRUE),
-        (Clause::UNIT, Variable::ERROR, Clause::FALSE),
-        (Clause::UNDEF, Variable::UNDEF, Clause::UNDEF),
-        (Clause::UNDEF, Variable::TRUE, Clause::UNDEF),
-        (Clause::UNDEF, Variable::FALSE, Clause::TRUE),
-        (Clause::UNDEF, Variable::ERROR, Clause::FALSE),
-        (Clause::TRUE, Variable::UNDEF, Clause::TRUE),
-        (Clause::TRUE, Variable::TRUE, Clause::TRUE),
-        (Clause::TRUE, Variable::FALSE, Clause::TRUE),
-        (Clause::TRUE, Variable::ERROR, Clause::FALSE),
-    ]);
-
     pub fn evaluate(&self, target: &mut Buffer2) {
         let source = self.variable.buffer.borrow();
         let mut positions = self.positions.borrow_mut();
         positions.reset();
-        let pattern = if self.sign {
-            Literal::PATTERN_POS
-        } else {
-            Literal::PATTERN_NEG
-        };
+        let pattern = if self.sign { FOLD_POS } else { FOLD_NEG };
         target.update(pattern, &*source, &mut *positions);
+    }
+
+    pub fn propagate(&self, coordinates: &[usize]) {
+        let crd: Vec<usize> = self.indices.iter().map(|&idx| coordinates[idx]).collect();
+        let pos = self.variable.shape.position(&crd);
+        let mut buffer = self.variable.buffer.borrow_mut();
+        let val = buffer.get(pos);
+        if val == BOOL_UNDEF {
+            buffer.set(pos, if self.sign { BOOL_TRUE } else { BOOL_FALSE });
+        }
     }
 }
 
@@ -233,15 +189,8 @@ pub struct Clause {
 }
 
 impl Clause {
-    const FORMAT: [char; 4] = ['0', '!', '?', '1'];
-
-    const FALSE: u32 = 0; // all false
-    const UNIT: u32 = 1; // exactly one undef
-    const UNDEF: u32 = 2; // two or more undef
-    const TRUE: u32 = 3; // at least one true
-
     pub fn new(shape: Shape, domains: Vec<Rc<Domain>>, literals: Vec<Literal>) -> Self {
-        let buffer = RefCell::new(Buffer2::new(shape.size(), Clause::FALSE));
+        let buffer = RefCell::new(Buffer2::new(shape.size(), EVAL_FALSE));
         Self {
             shape,
             domains,
@@ -252,10 +201,37 @@ impl Clause {
 
     pub fn evaluate(&self) {
         let mut buffer = self.buffer.borrow_mut();
-        buffer.fill(Clause::FALSE);
+        buffer.fill(EVAL_FALSE);
         for lit in self.literals.iter() {
             lit.evaluate(&mut *buffer);
         }
+    }
+
+    pub fn propagate(&self) -> u32 {
+        let buffer = self.buffer.borrow();
+        let mut result = EVAL_TRUE;
+        for pos in 0..buffer.len() {
+            let val = buffer.get(pos);
+            if val == EVAL_UNIT {
+                let mut coordinates = vec![0; self.shape.rank()];
+                self.shape.coordinates(pos, &mut coordinates);
+                for lit in self.literals.iter() {
+                    lit.propagate(&coordinates);
+                }
+            }
+            result = operation_222(EVAL_AND, result, val);
+        }
+        result
+    }
+
+    pub fn status(&self) -> u32 {
+        let buffer = self.buffer.borrow_mut();
+        let mut result = EVAL_TRUE;
+        for pos in 0..buffer.len() {
+            let val = buffer.get(pos);
+            result = operation_222(EVAL_AND, result, val);
+        }
+        result
     }
 
     pub fn print_table(&self) {
@@ -263,7 +239,7 @@ impl Clause {
         let mut cor = vec![0; self.shape.rank()];
         for pos in 0..self.shape.size() {
             self.shape.coordinates(pos, &mut cor);
-            let val = Clause::FORMAT[buffer.get(pos) as usize];
+            let val = EVAL_FORMAT[buffer.get(pos) as usize];
             println!("  {:?} = {}", cor, val);
         }
     }
@@ -280,7 +256,9 @@ impl fmt::Display for Clause {
             }
             write!(f, "{}", lit)?;
         }
-        write!(f, " = {}", self.buffer.borrow())
+
+        const TABLE: [&str; 4] = ["false", "unit", "undef", "true"];
+        write!(f, " = {}", TABLE[self.status() as usize])
     }
 }
 
@@ -343,6 +321,27 @@ impl Solver {
         }
     }
 
+    pub fn propagate(&self) {
+        let mut num = 0;
+        let mut idx = 0;
+        while num < self.clauses.len() {
+            if idx >= self.clauses.len() {
+                idx = 0;
+            }
+            let cla = &self.clauses[idx];
+            idx += 1;
+            cla.evaluate();
+            let val = cla.propagate();
+            if val == EVAL_FALSE {
+                break;
+            } else if val == EVAL_UNIT {
+                num = 0;
+            } else {
+                num += 1;
+            }
+        }
+    }
+
     pub fn print(&self) {
         for dom in self.domains.iter() {
             println!("domain {}", dom);
@@ -352,8 +351,9 @@ impl Solver {
             var.print_table();
         }
         for cla in self.clauses.iter() {
+            cla.evaluate();
             println!("clause {}", cla);
-            cla.print_table();
+            // cla.print_table();
         }
     }
 }
