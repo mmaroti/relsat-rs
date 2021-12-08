@@ -75,8 +75,8 @@ impl Variable {
     }
 
     pub fn set_equality(&self) {
-        assert!(self.shape.dimension() == 2 && self.shape[0] == self.shape[1]);
-        let size = self.shape[0];
+        assert!(self.shape.dimension() == 2 && self.shape.length(0) == self.shape.length(1));
+        let size = self.shape.length(0);
 
         let mut buffer = self.xbuffer.borrow_mut();
         buffer.fill(BOOL_FALSE);

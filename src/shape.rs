@@ -17,7 +17,7 @@
 
 //! Structures for working with tensor shapes and views.
 
-use std::ops::{Index, Range};
+use std::ops::Range;
 
 /// The rectangular shape of a tensor, which is just a vector of non-negative
 /// integers.
@@ -29,7 +29,8 @@ pub struct Shape {
 }
 
 impl Shape {
-    /// Creates a new shape with the given side lengths.
+    /// Creates a new shape with the given side lengths. The offset allows
+    /// to map positions of this shape into a range of a flat buffer.
     pub fn new(lengths: Vec<usize>, offset: usize) -> Self {
         let lengths = lengths.into_boxed_slice();
         let mut volume = 1;
@@ -43,22 +44,22 @@ impl Shape {
         }
     }
 
-    /// Returns the list of side lengths.
-    pub fn lengths(&self) -> &[usize] {
-        &self.lengths
-    }
-
     /// Returns the number of side lengths.
     pub fn dimension(&self) -> usize {
         self.lengths.len()
     }
 
-    /// The number of elements, which is just the product of all lengths.
+    /// Returns the side length along the given axis.
+    pub fn length(&self, axis: usize) -> usize {
+        self.lengths[axis]
+    }
+
+    /// The number of elements, which is just the product of all side lengths.
     pub fn volume(&self) -> usize {
         self.volume
     }
 
-    /// Returns the position in a flat array of an element at the given
+    /// Returns the position in a flat array of the element at the given
     /// coordinates. The number of coordinates must match the dimension.
     /// The last coordinate is advancing the fastest.
     pub fn position(&self, coordinates: &[usize]) -> usize {
@@ -72,14 +73,13 @@ impl Shape {
     }
 
     /// Sets the coordinates that correspond to the given position. The length
-    /// of the coordinates must match the rank. The last coordinate is
+    /// of the coordinates must match the dimension. The last coordinate is
     /// advancing the fastest.
     pub fn coordinates(&self, mut position: usize, coordinates: &mut [usize]) {
         debug_assert!(self.offset <= position && position < self.offset + self.volume);
-        debug_assert!(coordinates.len() == self.lengths.len());
+        debug_assert!(coordinates.len() == self.dimension());
         position -= self.offset;
-        for i in (0..self.lengths.len()).rev() {
-            let d = self.lengths[i];
+        for (i, &d) in self.lengths.iter().enumerate().rev() {
             coordinates[i] = position % d;
             position /= d;
         }
@@ -97,16 +97,8 @@ impl Shape {
     }
 }
 
-impl Index<usize> for Shape {
-    type Output = usize;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        self.lengths.index(index)
-    }
-}
-
-/// The shape of a view into a tensor, which is a list of dimensions and the
-/// corresponding strides.
+/// The shape of a view into a tensor, which is a list of side lengths
+/// and the corresponding strides.
 #[derive(PartialEq, Eq, Debug)]
 pub struct ShapeView {
     strides: Box<[(usize, usize)]>, // length, stride
@@ -134,7 +126,12 @@ impl ShapeView {
         self.strides.len()
     }
 
-    /// The number of elements, which is just the product of all dimensions.
+    /// Returns the side length along the given axis.
+    pub fn length(&self, axis: usize) -> usize {
+        self.strides[axis].0
+    }
+
+    /// The number of elements, which is just the product of all side length.
     pub fn volume(&self) -> usize {
         let mut n = 1;
         for &(d, _) in self.strides.iter() {
@@ -143,7 +140,7 @@ impl ShapeView {
         n
     }
 
-    /// Returns the position in a flat array of an element at the given
+    /// Returns the position in a flat array of the element at the given
     /// coordinates. The number of coordinates must match the dimension.
     /// The last coordinate is advancing the fastest.
     pub fn position(&self, coordinates: &[usize]) -> usize {
@@ -162,13 +159,9 @@ impl ShapeView {
         ShapeIter::new(self)
     }
 
-    /// Returns the shape of this view as a new object.
-    pub fn shape(&self) -> Shape {
-        Shape::new(self.strides.iter().map(|&(d, _)| d).collect(), self.offset)
-    }
-
-    /// Permutes the coordinates of the given view. The map mast be of size rank.
-    /// The old coordinate `i` will be placed at the new coordinate `map[i]`.
+    /// Permutes the coordinates of the given view. The map must be of size
+    /// dimension. The old coordinate `i` will be placed at the new coordinate
+    /// `map[i]`.
     pub fn permute(&self, map: &[usize]) -> Self {
         debug_assert!(map.len() == self.strides.len());
         let mut strides = vec![(0, 0); self.strides.len()].into_boxed_slice();
@@ -182,8 +175,8 @@ impl ShapeView {
 
     /// Computes the polymer of the given view, which allows the introduction
     /// dummy variables and identification of variables. The map must be of
-    /// size rank. The old coordinate `i` will be placed at the new coordinate
-    /// `map[i]`.
+    /// size dimension. The old coordinate `i` will be placed at the new
+    /// coordinate `map[i]`.
     pub fn polymer(&self, shape: &Shape, map: &[usize]) -> Self {
         debug_assert!(map.len() == self.strides.len());
         let strides: Vec<(usize, usize)> = shape.lengths.iter().map(|&d| (d, 0)).collect();
@@ -196,8 +189,8 @@ impl ShapeView {
         Self { strides, offset }
     }
 
-    /// Returns another view whose positions are the same but might have fewer
-    /// dimensions because some could be merged into larger indices.
+    /// Returns another view whose positions are the same but might have
+    /// smaller dimension because some axis could be merged.
     pub fn simplify(&self) -> Self {
         let mut strides = self.strides.clone().into_vec();
 
@@ -272,7 +265,7 @@ impl ShapeIter {
 impl Iterator for ShapeIter {
     type Item = usize;
 
-    fn next(&mut self) -> Option<usize> {
+    fn next(&mut self) -> Option<Self::Item> {
         if self.done {
             None
         } else {
@@ -303,23 +296,27 @@ mod tests {
         let pos1: Vec<usize> = shape.positions().collect();
 
         let view = shape.view();
-        assert_eq!(view.shape(), shape);
         assert_eq!(view.volume(), shape.volume());
-        assert_eq!(view.dimension(), shape.dimension());
+        assert_eq!(view.dimension(), 3);
+        assert_eq!(view.length(0), 2);
+        assert_eq!(view.length(1), 3);
+        assert_eq!(view.length(2), 4);
         let pos2: Vec<usize> = view.positions().collect();
         assert_eq!(pos1, pos2);
 
         let view = shape.view().simplify();
-        assert_eq!(view.shape(), Shape::new(vec![shape.volume()], 0));
         assert_eq!(view.volume(), shape.volume());
         assert_eq!(view.dimension(), 1);
+        assert_eq!(view.length(0), 24);
         let pos2: Vec<usize> = view.positions().collect();
         assert_eq!(pos1, pos2);
 
         let view = shape.view().permute(&[2, 0, 1]);
-        assert_eq!(view.shape(), Shape::new(vec![3, 4, 2], 0));
         assert_eq!(view.volume(), shape.volume());
-        assert_eq!(view.dimension(), shape.dimension());
+        assert_eq!(view.dimension(), 3);
+        assert_eq!(view.length(0), 3);
+        assert_eq!(view.length(1), 4);
+        assert_eq!(view.length(2), 2);
         let pos2: Vec<usize> = view.positions().collect();
         let pos3 = vec![
             0, 12, 1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23,

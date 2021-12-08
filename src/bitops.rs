@@ -16,6 +16,29 @@
 */
 
 #[inline(always)]
+pub const fn operation_22(oper: u32, a: u32) -> u32 {
+    debug_assert!(a <= 3);
+    (oper >> (a << 1)) & 3
+}
+
+const fn define_22(cases: &[(u32, u32)]) -> u32 {
+    debug_assert!(cases.len() == 4);
+    let mut set: u32 = 0;
+    let mut val: u32 = 0;
+    let mut idx = 0;
+    while idx < cases.len() {
+        let (a, b) = cases[idx];
+        debug_assert!(a <= 3 && b <= 3);
+        let pos = a << 1;
+        val |= b << pos;
+        set |= 3 << pos;
+        idx += 1;
+    }
+    debug_assert!(set == 0xff);
+    val
+}
+
+#[inline(always)]
 pub const fn operation_222(oper: u32, a: u32, b: u32) -> u32 {
     debug_assert!(a <= 3 && b <= 3);
     (oper >> ((a << 3) | (b << 1))) & 3
@@ -44,6 +67,13 @@ pub const BOOL_TRUE: u32 = 2;
 pub const BOOL_MISSING: u32 = 3;
 
 pub const BOOL_FORMAT: [char; 4] = ['0', '?', '1', 'x'];
+
+pub const BOOL_NOT: u32 = define_22(&[
+    (BOOL_FALSE, BOOL_TRUE),
+    (BOOL_UNDEF, BOOL_UNDEF),
+    (BOOL_TRUE, BOOL_FALSE),
+    (BOOL_MISSING, BOOL_MISSING),
+]);
 
 pub const BOOL_OR: u32 = define_222(&[
     (BOOL_FALSE, BOOL_FALSE, BOOL_FALSE),
@@ -146,3 +176,78 @@ pub const EVAL_AND: u32 = define_222(&[
     (EVAL_TRUE, EVAL_UNDEF, EVAL_UNDEF),
     (EVAL_TRUE, EVAL_TRUE, EVAL_TRUE),
 ]);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn idempotent_222(oper: u32) -> bool {
+        for a in 0..3 {
+            if operation_222(oper, a, a) != a {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    fn commutative_222(oper: u32) -> bool {
+        for a in 0..3 {
+            for b in 0..3 {
+                if operation_222(oper, a, b) != operation_222(oper, b, a) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    fn associative_222(oper: u32) -> bool {
+        for a in 0..3 {
+            for b in 0..3 {
+                for c in 0..3 {
+                    if operation_222(oper, operation_222(oper, a, b), c)
+                        != operation_222(oper, a, operation_222(oper, b, c))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    #[test]
+    fn laws() {
+        assert!(idempotent_222(BOOL_AND));
+        assert!(commutative_222(BOOL_AND));
+        assert!(associative_222(BOOL_AND));
+
+        assert!(idempotent_222(BOOL_OR));
+        assert!(commutative_222(BOOL_OR));
+        assert!(associative_222(BOOL_OR));
+
+        assert!(idempotent_222(EVAL_AND));
+        assert!(commutative_222(EVAL_AND));
+        assert!(associative_222(EVAL_AND));
+
+        for a in 0..3 {
+            for b in 0..3 {
+                assert_eq!(
+                    operation_222(FOLD_POS, a, b),
+                    operation_222(FOLD_NEG, a, operation_22(BOOL_NOT, b))
+                );
+            }
+        }
+
+        for a in 0..3 {
+            for b in 0..3 {
+                for c in 0..3 {
+                    assert_eq!(
+                        operation_222(FOLD_POS, operation_222(FOLD_POS, a, b), c),
+                        operation_222(FOLD_POS, operation_222(FOLD_POS, a, c), b),
+                    );
+                }
+            }
+        }
+    }
+}
