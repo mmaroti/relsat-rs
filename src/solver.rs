@@ -23,6 +23,11 @@ use super::bitops::*;
 use super::buffer::Buffer2;
 use super::shape::{Shape, ShapeIter};
 
+#[derive(Debug, Default)]
+struct State {
+    assignment: Buffer2,
+}
+
 #[derive(Debug)]
 pub struct Domain {
     name: String,
@@ -30,12 +35,12 @@ pub struct Domain {
 }
 
 impl Domain {
-    pub fn new(name: &str, size: usize) -> Self {
+    fn new(name: &str, size: usize) -> Self {
         let name = name.to_string();
         Self { name, size }
     }
 
-    pub fn eq(dom1: &Rc<Domain>, dom2: &Rc<Domain>) -> bool {
+    fn eq(dom1: &Rc<Domain>, dom2: &Rc<Domain>) -> bool {
         std::ptr::eq(&**dom1, &**dom2)
     }
 }
@@ -51,27 +56,29 @@ pub struct Variable {
     name: String,
     domains: Vec<Rc<Domain>>,
     shape: Shape,
-    buffer: RefCell<Buffer2>,
+    xbuffer: RefCell<Buffer2>,
+    state: Rc<State>,
 }
 
 impl Variable {
-    pub fn new(name: &str, domains: Vec<Rc<Domain>>) -> Self {
+    fn new(name: &str, domains: Vec<Rc<Domain>>, state: Rc<State>) -> Self {
         let name = name.to_string();
-        let shape = Shape::new(domains.iter().map(|d| d.size).collect());
-        let buffer = RefCell::new(Buffer2::new(shape.size(), BOOL_UNDEF));
+        let shape = Shape::new(domains.iter().map(|d| d.size).collect(), 0);
+        let buffer = RefCell::new(Buffer2::new(shape.volume(), BOOL_UNDEF));
         Self {
             name,
             domains,
             shape,
-            buffer,
+            xbuffer: buffer,
+            state,
         }
     }
 
     pub fn set_equality(&self) {
-        assert!(self.shape.rank() == 2 && self.shape[0] == self.shape[1]);
+        assert!(self.shape.dimension() == 2 && self.shape[0] == self.shape[1]);
         let size = self.shape[0];
 
-        let mut buffer = self.buffer.borrow_mut();
+        let mut buffer = self.xbuffer.borrow_mut();
         buffer.fill(BOOL_FALSE);
         for i in 0..size {
             buffer.set(i * (size + 1), BOOL_TRUE);
@@ -80,15 +87,15 @@ impl Variable {
 
     pub fn set_value(&self, indices: &[usize], value: bool) {
         let pos = self.shape.position(indices);
-        let mut buffer = self.buffer.borrow_mut();
+        let mut buffer = self.xbuffer.borrow_mut();
         assert!(buffer.get(pos) == BOOL_UNDEF);
         buffer.set(pos, if value { BOOL_TRUE } else { BOOL_FALSE });
     }
 
     pub fn print_table(&self) {
-        let buffer = self.buffer.borrow();
-        let mut cor = vec![0; self.shape.rank()];
-        for pos in 0..self.shape.size() {
+        let buffer = self.xbuffer.borrow();
+        let mut cor = vec![0; self.shape.dimension()];
+        for pos in self.shape.positions() {
             self.shape.coordinates(pos, &mut cor);
             let val = BOOL_FORMAT[buffer.get(pos) as usize];
             println!("  {:?} = {}", cor, val);
@@ -108,7 +115,7 @@ impl fmt::Display for Variable {
             }
             write!(f, "{}", dom.name)?;
         }
-        write!(f, ") = {}", self.buffer.borrow())
+        write!(f, ") = {}", self.xbuffer.borrow())
     }
 }
 
@@ -141,17 +148,17 @@ impl Literal {
     }
 
     pub fn evaluate(&self, target: &mut Buffer2) {
-        let source = self.variable.buffer.borrow();
+        let source = self.variable.xbuffer.borrow();
         let mut positions = self.positions.borrow_mut();
         positions.reset();
-        let pattern = if self.sign { FOLD_POS } else { FOLD_NEG };
-        target.update(pattern, &*source, &mut *positions);
+        let op = if self.sign { FOLD_POS } else { FOLD_NEG };
+        target.update(op, &*source, &mut *positions);
     }
 
     pub fn propagate(&self, coordinates: &[usize]) {
         let crd: Vec<usize> = self.indices.iter().map(|&idx| coordinates[idx]).collect();
         let pos = self.variable.shape.position(&crd);
-        let mut buffer = self.variable.buffer.borrow_mut();
+        let mut buffer = self.variable.xbuffer.borrow_mut();
         let val = buffer.get(pos);
         if val == BOOL_UNDEF {
             buffer.set(pos, if self.sign { BOOL_TRUE } else { BOOL_FALSE });
@@ -190,7 +197,7 @@ pub struct Clause {
 
 impl Clause {
     pub fn new(shape: Shape, domains: Vec<Rc<Domain>>, literals: Vec<Literal>) -> Self {
-        let buffer = RefCell::new(Buffer2::new(shape.size(), EVAL_FALSE));
+        let buffer = RefCell::new(Buffer2::new(shape.volume(), EVAL_FALSE));
         Self {
             shape,
             domains,
@@ -213,7 +220,7 @@ impl Clause {
         for pos in 0..buffer.len() {
             let val = buffer.get(pos);
             if val == EVAL_UNIT {
-                let mut coordinates = vec![0; self.shape.rank()];
+                let mut coordinates = vec![0; self.shape.dimension()];
                 self.shape.coordinates(pos, &mut coordinates);
                 for lit in self.literals.iter() {
                     lit.propagate(&coordinates);
@@ -236,8 +243,8 @@ impl Clause {
 
     pub fn print_table(&self) {
         let buffer = self.buffer.borrow();
-        let mut cor = vec![0; self.shape.rank()];
-        for pos in 0..self.shape.size() {
+        let mut cor = vec![0; self.shape.dimension()];
+        for pos in self.shape.positions() {
             self.shape.coordinates(pos, &mut cor);
             let val = EVAL_FORMAT[buffer.get(pos) as usize];
             println!("  {:?} = {}", cor, val);
@@ -264,6 +271,7 @@ impl fmt::Display for Clause {
 
 #[derive(Debug, Default)]
 pub struct Solver {
+    state: Rc<State>,
     domains: Vec<Rc<Domain>>,
     variables: Vec<Rc<Variable>>,
     clauses: Vec<Clause>,
@@ -280,7 +288,7 @@ impl Solver {
     pub fn add_variable(&mut self, name: &str, domains: Vec<&Rc<Domain>>) -> Rc<Variable> {
         assert!(self.variables.iter().all(|rel| rel.name != name));
         let domains = domains.into_iter().cloned().collect();
-        let rel = Rc::new(Variable::new(name, domains));
+        let rel = Rc::new(Variable::new(name, domains, self.state.clone()));
         self.variables.push(rel.clone());
         rel
     }
@@ -305,7 +313,7 @@ impl Solver {
         }
         let domains: Vec<Rc<Domain>> = domains.into_iter().map(|d| d.unwrap()).collect();
 
-        let shape = Shape::new(domains.iter().map(|d| d.size).collect());
+        let shape = Shape::new(domains.iter().map(|d| d.size).collect(), 0);
         let literals: Vec<Literal> = literals
             .into_iter()
             .map(|(sign, var, indices)| Literal::new(&shape, sign, var, indices))
@@ -321,7 +329,7 @@ impl Solver {
         }
     }
 
-    pub fn propagate(&self) {
+    pub fn propagate(&mut self) {
         let mut num = 0;
         let mut idx = 0;
         while num < self.clauses.len() {

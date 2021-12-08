@@ -16,9 +16,9 @@
 */
 
 #[inline(always)]
-pub const fn operation_222(op: u32, a: u32, b: u32) -> u32 {
+pub const fn operation_222(oper: u32, a: u32, b: u32) -> u32 {
     debug_assert!(a <= 3 && b <= 3);
-    (op >> ((a << 3) | (b << 1))) & 3
+    (oper >> ((a << 3) | (b << 1))) & 3
 }
 
 const fn define_222(cases: &[(u32, u32, u32)]) -> u32 {

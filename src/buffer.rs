@@ -15,11 +15,16 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+//! Structures for working with 1-bit and 2-bit vectors.
+
 use std::fmt;
 
-#[derive(Debug)]
+use super::bitops::operation_222;
+
+/// A vector for holding single bits represented as 0 or 1.
+#[derive(Debug, Default)]
 pub struct Buffer1 {
-    data: Box<[u32]>,
+    data: Vec<u32>,
     len: usize,
 }
 
@@ -29,15 +34,29 @@ impl Buffer1 {
 
     pub fn new(len: usize, val: u32) -> Self {
         assert!(val <= 1);
-        let val = Buffer1::FILL[val as usize];
-        let data = vec![val; (len + 31) / 32].into_boxed_slice();
+        let fill = Buffer1::FILL[val as usize];
+        let data = vec![fill; (len + 31) / 32];
         Self { data, len }
     }
 
+    pub fn append(&mut self, len: usize, val: u32) {
+        assert!(val <= 1);
+        let fill = Buffer1::FILL[val as usize];
+        if self.len % 32 != 0 {
+            let mask = (1 << (self.len % 32)) - 1;
+            let val = self.data.last_mut().unwrap();
+            *val = (*val & mask) | (fill & !mask);
+        }
+        self.len += len;
+        self.data.resize((self.len + 31) / 32, fill);
+    }
+
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.len
     }
 
+    #[inline(always)]
     pub fn get(&self, pos: usize) -> u32 {
         debug_assert!(pos < self.len);
         let data = self.data[pos / 32];
@@ -45,6 +64,7 @@ impl Buffer1 {
         data & 1
     }
 
+    #[inline(always)]
     pub fn set(&mut self, pos: usize, val: u32) {
         debug_assert!(pos < self.len && val <= 1);
         let mut data = self.data[pos / 32];
@@ -53,6 +73,7 @@ impl Buffer1 {
         self.data[pos / 32] = data;
     }
 
+    #[inline(always)]
     pub fn fill(&mut self, val: u32) {
         debug_assert!(val <= 1);
         self.data.fill(Buffer1::FILL[val as usize]);
@@ -70,9 +91,10 @@ impl fmt::Display for Buffer1 {
     }
 }
 
-#[derive(Debug)]
+/// A vector for holding double bits represented as 0, 1, 2 or 3.
+#[derive(Debug, Default)]
 pub struct Buffer2 {
-    data: Box<[u32]>,
+    data: Vec<u32>,
     len: usize,
 }
 
@@ -82,9 +104,21 @@ impl Buffer2 {
 
     pub fn new(len: usize, val: u32) -> Self {
         assert!(val <= 3);
-        let val = Buffer2::FILL[val as usize];
-        let data = vec![val; (len + 15) / 16].into_boxed_slice();
+        let fill = Buffer2::FILL[val as usize];
+        let data = vec![fill; (len + 15) / 16];
         Self { data, len }
+    }
+
+    pub fn append(&mut self, len: usize, val: u32) {
+        assert!(val <= 3);
+        let fill = Buffer2::FILL[val as usize];
+        if self.len % 16 != 0 {
+            let mask = (1 << (2 * (self.len % 16))) - 1;
+            let val = self.data.last_mut().unwrap();
+            *val = (*val & mask) | (fill & !mask);
+        }
+        self.len += len;
+        self.data.resize((self.len + 15) / 16, fill);
     }
 
     #[inline(always)]
@@ -115,15 +149,13 @@ impl Buffer2 {
         self.data.fill(Buffer2::FILL[val as usize]);
     }
 
-    pub fn update<ITER>(&mut self, pattern: u32, other: &Self, iter: &mut ITER)
+    pub fn update<ITER>(&mut self, oper: u32, other: &Self, iter: &mut ITER)
     where
         ITER: Iterator<Item = usize>,
     {
         let mut last = 0;
         for (pos1, pos2) in iter.enumerate() {
-            let val = (self.get(pos1) << 3) | (other.get(pos2) << 1);
-            let val = (pattern >> val) & 3;
-            self.set(pos1, val);
+            self.set(pos1, operation_222(oper, self.get(pos1), other.get(pos2)));
             last = pos1 + 1;
         }
         debug_assert!(last == self.len);
@@ -162,22 +194,36 @@ mod tests {
     #[test]
     fn buffer() {
         let vec = random(0x12345678, 11111);
-        let mut buf1 = Buffer1::new(vec.len(), 0);
-        let mut buf2 = Buffer2::new(vec.len(), 0);
+        let mut buf1a = Buffer1::new(vec.len(), 0);
+        let mut buf2a = Buffer2::new(vec.len(), 0);
+        let mut buf1b: Buffer1 = Default::default();
+        let mut buf2b: Buffer2 = Default::default();
+
         for (i, a) in vec.iter().enumerate() {
-            buf1.set(i, a & 1);
-            buf2.set(i, a & 3);
+            buf1a.set(i, a & 1);
+            buf2a.set(i, a & 3);
+            buf1b.append(3, a & 1);
+            buf2b.append(3, a & 3);
         }
+        assert!(buf1a.len() == vec.len());
+        assert!(buf2a.len() == vec.len());
+        assert!(buf1b.len() == 3 * vec.len());
+        assert!(buf2b.len() == 3 * vec.len());
+
         for (i, a) in vec.iter().enumerate() {
-            assert_eq!(buf1.get(i), a & 1);
-            assert_eq!(buf2.get(i), a & 3);
+            assert_eq!(buf1a.get(i), a & 1);
+            assert_eq!(buf2a.get(i), a & 3);
+            for j in 0..3 {
+                assert_eq!(buf1b.get(3 * i + j), a & 1);
+                assert_eq!(buf2b.get(3 * i + j), a & 3);
+            }
         }
 
-        buf1.fill(1);
-        buf2.fill(1);
+        buf1a.fill(1);
+        buf2a.fill(1);
         for i in 0..vec.len() {
-            assert_eq!(buf1.get(i), 1);
-            assert_eq!(buf2.get(i), 1);
+            assert_eq!(buf1a.get(i), 1);
+            assert_eq!(buf2a.get(i), 1);
         }
     }
 }
