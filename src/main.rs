@@ -83,9 +83,9 @@ fn main() {
 
     equ.set_equality();
     one.set_value(&[0], true);
-    mul.set_value(&[1, 0, 1], false);
-    inv.set_value(&[1, 1], true);
-    inv.set_value(&[0, 0], true);
+    // mul.set_value(&[1, 0, 1], false);
+    // inv.set_value(&[1, 1], true);
+    // inv.set_value(&[0, 0], true);
     // mul.set_value(&[1, 1, 0], true);
 
     sol.propagate();

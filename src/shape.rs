@@ -72,6 +72,11 @@ impl Shape {
         self.offset + n
     }
 
+    /// Returns an iterator through all valid positions, volume many in total.
+    pub fn positions(&self) -> Range<usize> {
+        self.offset..(self.offset + self.volume)
+    }
+
     /// Sets the coordinates that correspond to the given position. The length
     /// of the coordinates must match the dimension. The last coordinate is
     /// advancing the fastest.
@@ -84,11 +89,6 @@ impl Shape {
             position /= d;
         }
         debug_assert!(position == 0);
-    }
-
-    /// Returns an iterator through all valid positions, volume many in total.
-    pub fn positions(&self) -> Range<usize> {
-        self.offset..(self.offset + self.volume)
     }
 
     /// Creates the default view of this shape.

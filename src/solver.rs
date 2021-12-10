@@ -26,6 +26,63 @@ use super::shape::{Shape, ShapeIter};
 #[derive(Debug, Default)]
 struct State {
     assignment: Buffer2,
+    trail: Vec<usize>,
+    levels: Vec<usize>,
+}
+
+impl State {
+    pub fn create_table(&mut self, domains: &[Rc<Domain>]) -> Shape {
+        let shape = Shape::new(
+            domains.iter().map(|d| d.size).collect(),
+            self.assignment.len(),
+        );
+        self.assignment.append(shape.volume(), BOOL_UNDEF);
+        shape
+    }
+
+    pub fn print_table(&self, shape: &Shape) {
+        let mut cor = vec![0; shape.dimension()];
+        for pos in shape.positions() {
+            shape.coordinates(pos, &mut cor);
+            let val = BOOL_FORMAT[self.assignment.get(pos) as usize];
+            println!("  {:?} = {}", cor, val);
+        }
+    }
+
+    pub fn assign(&mut self, pos: usize, sign: bool) {
+        assert!(self.levels.is_empty());
+        assert!(self.assignment.get(pos) == BOOL_UNDEF);
+        self.assignment
+            .set(pos, if sign { BOOL_TRUE } else { BOOL_FALSE });
+        self.trail.push(pos);
+    }
+
+    pub fn propagate(&mut self, pos: usize, sign: bool) {
+        let old = self.assignment.get(pos);
+        if old == BOOL_UNDEF {
+            self.assignment
+                .set(pos, if sign { BOOL_TRUE } else { BOOL_FALSE });
+            self.trail.push(pos);
+        }
+    }
+
+    pub fn current_level(&self) -> usize {
+        self.levels.len()
+    }
+
+    pub fn create_level(&mut self) {
+        self.levels.push(self.trail.len());
+    }
+
+    pub fn cancel_levels(&mut self, level: usize) {
+        let start = self.levels[level];
+        self.levels.truncate(level);
+        for &pos in self.trail[start..].iter() {
+            assert!(self.assignment.get(pos) != BOOL_UNDEF);
+            self.assignment.set(pos, BOOL_UNDEF);
+        }
+        self.trail.truncate(start);
+    }
 }
 
 #[derive(Debug)]
@@ -53,53 +110,41 @@ impl fmt::Display for Domain {
 
 #[derive(Debug)]
 pub struct Variable {
+    state: Rc<RefCell<State>>,
+    shape: Shape,
     name: String,
     domains: Vec<Rc<Domain>>,
-    shape: Shape,
-    xbuffer: RefCell<Buffer2>,
-    state: Rc<State>,
 }
 
 impl Variable {
-    fn new(name: &str, domains: Vec<Rc<Domain>>, state: Rc<State>) -> Self {
+    fn new(name: &str, domains: Vec<Rc<Domain>>, state: Rc<RefCell<State>>) -> Self {
         let name = name.to_string();
-        let shape = Shape::new(domains.iter().map(|d| d.size).collect(), 0);
-        let buffer = RefCell::new(Buffer2::new(shape.volume(), BOOL_UNDEF));
+        let shape = state.borrow_mut().create_table(&domains);
         Self {
             name,
             domains,
             shape,
-            xbuffer: buffer,
             state,
         }
     }
 
     pub fn set_equality(&self) {
-        assert!(self.shape.dimension() == 2 && self.shape.length(0) == self.shape.length(1));
-        let size = self.shape.length(0);
-
-        let mut buffer = self.xbuffer.borrow_mut();
-        buffer.fill(BOOL_FALSE);
-        for i in 0..size {
-            buffer.set(i * (size + 1), BOOL_TRUE);
+        assert!(self.shape.dimension() == 2);
+        for i in 0..self.shape.length(0) {
+            for j in 0..self.shape.length(1) {
+                self.set_value(&[i, j], i == j);
+            }
         }
     }
 
-    pub fn set_value(&self, indices: &[usize], value: bool) {
-        let pos = self.shape.position(indices);
-        let mut buffer = self.xbuffer.borrow_mut();
-        assert!(buffer.get(pos) == BOOL_UNDEF);
-        buffer.set(pos, if value { BOOL_TRUE } else { BOOL_FALSE });
+    pub fn set_value(&self, coordinates: &[usize], sign: bool) {
+        let pos = self.shape.position(coordinates);
+        self.state.borrow_mut().assign(pos, sign);
     }
 
-    pub fn print_table(&self) {
-        let buffer = self.xbuffer.borrow();
-        let mut cor = vec![0; self.shape.dimension()];
-        for pos in self.shape.positions() {
-            self.shape.coordinates(pos, &mut cor);
-            let val = BOOL_FORMAT[buffer.get(pos) as usize];
-            println!("  {:?} = {}", cor, val);
-        }
+    pub fn propagate(&self, coordinates: &[usize], sign: bool) {
+        let pos = self.shape.position(coordinates);
+        self.state.borrow_mut().propagate(pos, sign);
     }
 }
 
@@ -115,7 +160,7 @@ impl fmt::Display for Variable {
             }
             write!(f, "{}", dom.name)?;
         }
-        write!(f, ") = {}", self.xbuffer.borrow())
+        write!(f, ")")
     }
 }
 
@@ -148,21 +193,16 @@ impl Literal {
     }
 
     pub fn evaluate(&self, target: &mut Buffer2) {
-        let source = self.variable.xbuffer.borrow();
+        let source = &self.variable.state.borrow().assignment;
         let mut positions = self.positions.borrow_mut();
         positions.reset();
         let op = if self.sign { FOLD_POS } else { FOLD_NEG };
-        target.update(op, &*source, &mut *positions);
+        target.update(op, source, &mut *positions);
     }
 
     pub fn propagate(&self, coordinates: &[usize]) {
-        let crd: Vec<usize> = self.indices.iter().map(|&idx| coordinates[idx]).collect();
-        let pos = self.variable.shape.position(&crd);
-        let mut buffer = self.variable.xbuffer.borrow_mut();
-        let val = buffer.get(pos);
-        if val == BOOL_UNDEF {
-            buffer.set(pos, if self.sign { BOOL_TRUE } else { BOOL_FALSE });
-        }
+        let coordinates: Vec<usize> = self.indices.iter().map(|&idx| coordinates[idx]).collect();
+        self.variable.propagate(&coordinates, self.sign);
     }
 }
 
@@ -271,7 +311,7 @@ impl fmt::Display for Clause {
 
 #[derive(Debug, Default)]
 pub struct Solver {
-    state: Rc<State>,
+    state: Rc<RefCell<State>>,
     domains: Vec<Rc<Domain>>,
     variables: Vec<Rc<Variable>>,
     clauses: Vec<Clause>,
@@ -354,9 +394,11 @@ impl Solver {
         for dom in self.domains.iter() {
             println!("domain {}", dom);
         }
+        let state = self.state.borrow();
+        println!("{:?}", state);
         for var in self.variables.iter() {
             println!("variable {}", var);
-            var.print_table();
+            state.print_table(&var.shape);
         }
         for cla in self.clauses.iter() {
             cla.evaluate();

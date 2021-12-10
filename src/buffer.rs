@@ -17,7 +17,6 @@
 
 //! Structures for working with 1-bit and 2-bit vectors.
 
-use std::fmt;
 use std::ops::Range;
 
 use super::bitops::operation_222;
@@ -31,7 +30,6 @@ pub struct Buffer1 {
 
 impl Buffer1 {
     const FILL: [u32; 2] = [0x00000000, 0xffffffff];
-    const FORMAT: [char; 2] = ['0', '1'];
 
     pub fn new(len: usize, val: u32) -> Self {
         debug_assert!(val <= 1);
@@ -110,17 +108,6 @@ impl Buffer1 {
     }
 }
 
-impl fmt::Display for Buffer1 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\"")?;
-        for idx in 0..self.len() {
-            let val = self.get(idx);
-            write!(f, "{}", Buffer1::FORMAT[val as usize])?;
-        }
-        write!(f, "\"")
-    }
-}
-
 /// A vector for holding double bits represented as 0, 1, 2 or 3.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Buffer2 {
@@ -130,7 +117,6 @@ pub struct Buffer2 {
 
 impl Buffer2 {
     const FILL: [u32; 4] = [0x00000000, 0x55555555, 0xaaaaaaaa, 0xffffffff];
-    const FORMAT: [char; 4] = ['0', '1', '2', '3'];
 
     pub fn new(len: usize, val: u32) -> Self {
         debug_assert!(val <= 3);
@@ -219,36 +205,6 @@ impl Buffer2 {
             last = pos1 + 1;
         }
         debug_assert!(last == self.len);
-    }
-}
-
-impl fmt::Display for Buffer2 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\"")?;
-        for idx in 0..self.len() {
-            let val = self.get(idx);
-            write!(f, "{}", Buffer2::FORMAT[val as usize])?;
-        }
-        write!(f, "\"")
-    }
-}
-
-struct Buffer2Iter<'a, ITER>
-where
-    ITER: Iterator<Item = usize>,
-{
-    buffer: &'a Buffer2,
-    iter: &'a mut ITER,
-}
-
-impl<'a, ITER> Iterator for Buffer2Iter<'a, ITER>
-where
-    ITER: Iterator<Item = usize>,
-{
-    type Item = u32;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|pos| self.buffer.get(pos))
     }
 }
 
