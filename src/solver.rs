@@ -49,7 +49,7 @@ impl State {
         }
     }
 
-    pub fn assign(&mut self, pos: usize, sign: bool) {
+    pub fn set_value(&mut self, pos: usize, sign: bool) {
         assert!(self.levels.is_empty());
         assert!(self.assignment.get(pos) == BOOL_UNDEF);
         self.assignment
@@ -127,25 +127,6 @@ impl Variable {
             state,
         }
     }
-
-    pub fn set_equality(&self) {
-        assert!(self.shape.dimension() == 2);
-        for i in 0..self.shape.length(0) {
-            for j in 0..self.shape.length(1) {
-                self.set_value(&[i, j], i == j);
-            }
-        }
-    }
-
-    pub fn set_value(&self, coordinates: &[usize], sign: bool) {
-        let pos = self.shape.position(coordinates);
-        self.state.borrow_mut().assign(pos, sign);
-    }
-
-    pub fn propagate(&self, coordinates: &[usize], sign: bool) {
-        let pos = self.shape.position(coordinates);
-        self.state.borrow_mut().propagate(pos, sign);
-    }
 }
 
 impl fmt::Display for Variable {
@@ -167,42 +148,40 @@ impl fmt::Display for Variable {
 #[derive(Debug)]
 pub struct Literal {
     variable: Rc<Variable>,
-    indices: Box<[usize]>,
-    positions: RefCell<ShapeIter>,
+    axes: Box<[usize]>,
+    positions: ShapeIter,
     sign: bool,
 }
 
 impl Literal {
-    pub fn new(shape: &Shape, sign: bool, var: &Rc<Variable>, indices: Vec<usize>) -> Self {
+    pub fn new(shape: &Shape, sign: bool, var: &Rc<Variable>, axes: Vec<usize>) -> Self {
         let variable = var.clone();
-        let indices = indices.into_boxed_slice();
-        let positions = RefCell::new(
-            variable
-                .shape
-                .view()
-                .polymer(shape, &indices)
-                .simplify()
-                .positions(),
-        );
+        let axes = axes.into_boxed_slice();
+        let positions = variable
+            .shape
+            .view()
+            .polymer(shape, &axes)
+            .simplify()
+            .positions();
         Literal {
             variable,
-            indices,
+            axes,
             positions,
             sign,
         }
     }
 
-    pub fn evaluate(&self, target: &mut Buffer2) {
+    pub fn evaluate(&mut self, target: &mut Buffer2) {
         let source = &self.variable.state.borrow().assignment;
-        let mut positions = self.positions.borrow_mut();
-        positions.reset();
+        self.positions.reset();
         let op = if self.sign { FOLD_POS } else { FOLD_NEG };
-        target.update(op, source, &mut *positions);
+        target.update(op, source, &mut self.positions);
     }
 
     pub fn propagate(&self, coordinates: &[usize]) {
-        let coordinates: Vec<usize> = self.indices.iter().map(|&idx| coordinates[idx]).collect();
-        self.variable.propagate(&coordinates, self.sign);
+        let coordinates: Vec<usize> = self.axes.iter().map(|&axis| coordinates[axis]).collect();
+        let pos = self.variable.shape.position(&coordinates);
+        self.variable.state.borrow_mut().propagate(pos, self.sign);
     }
 }
 
@@ -215,7 +194,7 @@ impl fmt::Display for Literal {
             self.variable.name
         )?;
         let mut first = true;
-        for &idx in self.indices.iter() {
+        for &idx in self.axes.iter() {
             if first {
                 first = false;
             } else {
@@ -232,12 +211,12 @@ pub struct Clause {
     domains: Vec<Rc<Domain>>,
     literals: Vec<Literal>,
     shape: Shape,
-    buffer: RefCell<Buffer2>,
+    buffer: Buffer2,
 }
 
 impl Clause {
     pub fn new(shape: Shape, domains: Vec<Rc<Domain>>, literals: Vec<Literal>) -> Self {
-        let buffer = RefCell::new(Buffer2::new(shape.volume(), EVAL_FALSE));
+        let buffer = Buffer2::new(shape.volume(), EVAL_FALSE);
         Self {
             shape,
             domains,
@@ -246,19 +225,26 @@ impl Clause {
         }
     }
 
-    pub fn evaluate(&self) {
-        let mut buffer = self.buffer.borrow_mut();
-        buffer.fill(EVAL_FALSE);
-        for lit in self.literals.iter() {
-            lit.evaluate(&mut *buffer);
+    pub fn evaluate(&mut self) {
+        self.buffer.fill(EVAL_FALSE);
+        for lit in self.literals.iter_mut() {
+            lit.evaluate(&mut self.buffer);
         }
     }
 
-    pub fn propagate(&self) -> Bit2 {
-        let buffer = self.buffer.borrow();
-        let mut result = EVAL_TRUE;
-        for pos in 0..buffer.len() {
-            let val = buffer.get(pos);
+    pub fn get_status(&self) -> Bit2 {
+        let mut res = EVAL_TRUE;
+        for pos in 0..self.buffer.len() {
+            let val = self.buffer.get(pos);
+            res = EVAL_AND.of(res, val);
+        }
+        res
+    }
+
+    pub fn propagate(&mut self) -> Bit2 {
+        let mut res = EVAL_TRUE;
+        for pos in 0..self.buffer.len() {
+            let val = self.buffer.get(pos);
             if val == EVAL_UNIT {
                 let mut coordinates = vec![0; self.shape.dimension()];
                 self.shape.coordinates(pos, &mut coordinates);
@@ -266,27 +252,16 @@ impl Clause {
                     lit.propagate(&coordinates);
                 }
             }
-            result = EVAL_AND.of(result, val);
+            res = EVAL_AND.of(res, val);
         }
-        result
-    }
-
-    pub fn status(&self) -> Bit2 {
-        let buffer = self.buffer.borrow_mut();
-        let mut result = EVAL_TRUE;
-        for pos in 0..buffer.len() {
-            let val = buffer.get(pos);
-            result = EVAL_AND.of(result, val);
-        }
-        result
+        res
     }
 
     pub fn print_table(&self) {
-        let buffer = self.buffer.borrow();
         let mut cor = vec![0; self.shape.dimension()];
         for pos in self.shape.positions() {
             self.shape.coordinates(pos, &mut cor);
-            let val = EVAL_FORMAT[buffer.get(pos).idx() as usize];
+            let val = EVAL_FORMAT1[self.buffer.get(pos).idx() as usize];
             println!("  {:?} = {}", cor, val);
         }
     }
@@ -304,8 +279,7 @@ impl fmt::Display for Clause {
             write!(f, "{}", lit)?;
         }
 
-        const TABLE: [&str; 4] = ["false", "unit", "undef", "true"];
-        write!(f, " = {}", TABLE[self.status().idx() as usize])
+        write!(f, " = {}", EVAL_FORMAT2[self.get_status().idx() as usize])
     }
 }
 
@@ -363,31 +337,56 @@ impl Solver {
         self.clauses.push(cla);
     }
 
-    pub fn evaluate(&self) {
-        for cla in self.clauses.iter() {
-            cla.evaluate();
+    pub fn set_value(&mut self, var: &Rc<Variable>, coordinates: &[usize], sign: bool) {
+        let pos = var.shape.position(coordinates);
+        self.state.borrow_mut().set_value(pos, sign);
+    }
+
+    pub fn set_equality(&mut self, var: &Rc<Variable>) {
+        let mut state = self.state.borrow_mut();
+        let shape = &var.shape;
+        assert!(shape.dimension() == 2);
+        for i in 0..shape.length(0) {
+            for j in 0..shape.length(1) {
+                let pos = shape.position(&[i, j]);
+                state.set_value(pos, i == j);
+            }
         }
     }
 
-    pub fn propagate(&mut self) {
+    pub fn get_status(&self) -> Bit2 {
+        let mut res = EVAL_TRUE;
+        for cla in self.clauses.iter() {
+            res = EVAL_AND.of(res, cla.get_status());
+        }
+        res
+    }
+
+    pub fn propagate(&mut self) -> Bit2 {
         let mut num = 0;
+        let mut res = EVAL_TRUE;
         let mut idx = 0;
         while num < self.clauses.len() {
             if idx >= self.clauses.len() {
                 idx = 0;
             }
-            let cla = &self.clauses[idx];
+            let cla = &mut self.clauses[idx];
             idx += 1;
             cla.evaluate();
             let val = cla.propagate();
             if val == EVAL_FALSE {
+                res = EVAL_FALSE;
                 break;
             } else if val == EVAL_UNIT {
+                res = EVAL_TRUE;
                 num = 0;
             } else {
+                res = EVAL_AND.of(res, val);
                 num += 1;
             }
         }
+        assert!(res == self.get_status());
+        res
     }
 
     pub fn print(&self) {
@@ -395,15 +394,17 @@ impl Solver {
             println!("domain {}", dom);
         }
         let state = self.state.borrow();
-        println!("{:?}", state);
         for var in self.variables.iter() {
             println!("variable {}", var);
             state.print_table(&var.shape);
         }
         for cla in self.clauses.iter() {
-            cla.evaluate();
             println!("clause {}", cla);
             // cla.print_table();
         }
+        println!(
+            "status = {}",
+            EVAL_FORMAT2[self.get_status().idx() as usize]
+        )
     }
 }

@@ -81,12 +81,12 @@ fn main() {
         (true, &mul, vec![1, 0, 1]),
     ]);
 
-    equ.set_equality();
-    one.set_value(&[0], true);
-    // mul.set_value(&[1, 0, 1], false);
-    // inv.set_value(&[1, 1], true);
-    // inv.set_value(&[0, 0], true);
-    // mul.set_value(&[1, 1, 0], true);
+    sol.set_equality(&equ);
+    sol.set_value(&one, &[0], true);
+    sol.set_value(&mul, &[1, 0, 1], false);
+    sol.set_value(&inv, &[1, 1], true);
+    sol.set_value(&inv, &[0, 0], true);
+    // sol.set_value(&mul, &[1, 1, 0], true);
 
     sol.propagate();
     sol.print();

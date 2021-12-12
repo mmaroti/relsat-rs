@@ -15,13 +15,14 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Bit1(u32);
 
 impl Bit1 {
     #[inline(always)]
     pub fn new(val: u32) -> Bit1 {
-        Bit1(val & 1)
+        debug_assert!(val <= 1);
+        Bit1(val)
     }
 
     #[inline(always)]
@@ -30,13 +31,14 @@ impl Bit1 {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Bit2(u32);
 
 impl Bit2 {
     #[inline(always)]
     pub const fn new(val: u32) -> Bit2 {
-        Bit2(val & 1)
+        debug_assert!(val <= 3);
+        Bit2(val)
     }
 
     #[inline(always)]
@@ -198,7 +200,8 @@ pub const EVAL_UNIT: Bit2 = Bit2(1);
 pub const EVAL_UNDEF: Bit2 = Bit2(2);
 pub const EVAL_TRUE: Bit2 = Bit2(3);
 
-pub const EVAL_FORMAT: [char; 4] = ['0', '!', '?', '1'];
+pub const EVAL_FORMAT1: [char; 4] = ['0', '!', '?', '1'];
+pub const EVAL_FORMAT2: [&str; 4] = ["false", "unit", "undef", "true"];
 
 pub const FOLD_POS: Op222 = Op222::new(&[
     (EVAL_FALSE, BOOL_FALSE, EVAL_FALSE),

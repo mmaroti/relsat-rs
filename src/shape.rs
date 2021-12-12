@@ -159,9 +159,9 @@ impl ShapeView {
         ShapeIter::new(self)
     }
 
-    /// Permutes the coordinates of the given view. The map must be of size
-    /// dimension. The old coordinate `i` will be placed at the new coordinate
-    /// `map[i]`.
+    /// Permutes the axes of the given view. The map must be of size
+    /// dimension. The old coordinate `i` will be placed at the new
+    /// coordinate `map[i]`.
     pub fn permute(&self, map: &[usize]) -> Self {
         debug_assert!(map.len() == self.strides.len());
         let mut strides = vec![(0, 0); self.strides.len()].into_boxed_slice();
@@ -190,7 +190,7 @@ impl ShapeView {
     }
 
     /// Returns another view whose positions are the same but might have
-    /// smaller dimension because some axis could be merged.
+    /// smaller dimension because some axes could be merged.
     pub fn simplify(&self) -> Self {
         let mut strides = self.strides.clone().into_vec();
 
