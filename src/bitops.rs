@@ -15,67 +15,147 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#[inline(always)]
-pub const fn operation_22(oper: u32, a: u32) -> u32 {
-    debug_assert!(a <= 3);
-    (oper >> (a << 1)) & 3
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Bit1(u32);
 
-const fn define_22(cases: &[(u32, u32)]) -> u32 {
-    debug_assert!(cases.len() == 4);
-    let mut set: u32 = 0;
-    let mut val: u32 = 0;
-    let mut idx = 0;
-    while idx < cases.len() {
-        let (a, b) = cases[idx];
-        debug_assert!(a <= 3 && b <= 3);
-        let pos = a << 1;
-        val |= b << pos;
-        set |= 3 << pos;
-        idx += 1;
+impl Bit1 {
+    #[inline(always)]
+    pub fn new(val: u32) -> Bit1 {
+        Bit1(val & 1)
     }
-    debug_assert!(set == 0xff);
-    val
-}
 
-#[inline(always)]
-pub const fn operation_222(oper: u32, a: u32, b: u32) -> u32 {
-    debug_assert!(a <= 3 && b <= 3);
-    (oper >> ((a << 3) | (b << 1))) & 3
-}
-
-const fn define_222(cases: &[(u32, u32, u32)]) -> u32 {
-    debug_assert!(cases.len() == 16);
-    let mut set: u32 = 0;
-    let mut val: u32 = 0;
-    let mut idx = 0;
-    while idx < cases.len() {
-        let (a, b, c) = cases[idx];
-        debug_assert!(a <= 3 && b <= 3 && c <= 3);
-        let pos = (a << 3) | (b << 1);
-        val |= c << pos;
-        set |= 3 << pos;
-        idx += 1;
+    #[inline(always)]
+    pub fn idx(self) -> u32 {
+        self.0
     }
-    debug_assert!(set == 0xffffffff);
-    val
 }
 
-pub const BOOL_FALSE: u32 = 0;
-pub const BOOL_UNDEF: u32 = 1;
-pub const BOOL_TRUE: u32 = 2;
-pub const BOOL_MISSING: u32 = 3;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Bit2(u32);
+
+impl Bit2 {
+    #[inline(always)]
+    pub const fn new(val: u32) -> Bit2 {
+        Bit2(val & 1)
+    }
+
+    #[inline(always)]
+    pub const fn idx(self) -> u32 {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Op22(u32);
+
+impl Op22 {
+    pub const fn new(cases: &[(Bit2, Bit2)]) -> Self {
+        assert!(cases.len() == 4);
+        let mut set: u32 = 0;
+        let mut val: u32 = 0;
+        let mut idx = 0;
+        while idx < cases.len() {
+            let (a, b) = cases[idx];
+            assert!(a.0 <= 3 && b.0 <= 3);
+            let pos = a.0 << 1;
+            val |= b.0 << pos;
+            set |= 3 << pos;
+            idx += 1;
+        }
+        assert!(set == 0xff);
+        Op22(val)
+    }
+
+    #[inline(always)]
+    pub const fn of(self, a: Bit2) -> Bit2 {
+        Bit2((self.0 >> (a.0 << 1)) & 3)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Op222(u32);
+
+impl Op222 {
+    pub const fn new(cases: &[(Bit2, Bit2, Bit2)]) -> Self {
+        assert!(cases.len() == 16);
+        let mut set: u32 = 0;
+        let mut val: u32 = 0;
+        let mut idx = 0;
+        while idx < cases.len() {
+            let (a, b, c) = cases[idx];
+            assert!(a.0 <= 3 && b.0 <= 3 && c.0 <= 3);
+            let pos = (a.0 << 3) | (b.0 << 1);
+            val |= c.0 << pos;
+            set |= 3 << pos;
+            idx += 1;
+        }
+        assert!(set == 0xffffffff);
+        Op222(val)
+    }
+
+    #[inline(always)]
+    pub const fn of(self, a: Bit2, b: Bit2) -> Bit2 {
+        Bit2((self.0 >> ((a.0 << 3) | (b.0 << 1))) & 3)
+    }
+
+    #[cfg(test)]
+    fn idempotent(self) -> bool {
+        for a in 0..3 {
+            let a = Bit2(a);
+            if self.of(a, a) != a {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[cfg(test)]
+    fn commutative(self) -> bool {
+        for a in 0..3 {
+            let a = Bit2(a);
+            for b in 0..3 {
+                let b = Bit2(b);
+                if self.of(a, b) != self.of(b, a) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    #[cfg(test)]
+    fn associative(self) -> bool {
+        for a in 0..3 {
+            let a = Bit2(a);
+            for b in 0..3 {
+                let b = Bit2(b);
+                for c in 0..3 {
+                    let c = Bit2(c);
+                    if self.of(self.of(a, b), c) != self.of(a, self.of(b, c)) {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+}
+
+pub const BOOL_FALSE: Bit2 = Bit2(0);
+pub const BOOL_UNDEF: Bit2 = Bit2(1);
+pub const BOOL_TRUE: Bit2 = Bit2(2);
+pub const BOOL_MISSING: Bit2 = Bit2(3);
 
 pub const BOOL_FORMAT: [char; 4] = ['0', '?', '1', 'x'];
 
-pub const BOOL_NOT: u32 = define_22(&[
+pub const BOOL_NOT: Op22 = Op22::new(&[
     (BOOL_FALSE, BOOL_TRUE),
     (BOOL_UNDEF, BOOL_UNDEF),
     (BOOL_TRUE, BOOL_FALSE),
     (BOOL_MISSING, BOOL_MISSING),
 ]);
 
-pub const BOOL_OR: u32 = define_222(&[
+pub const BOOL_OR: Op222 = Op222::new(&[
     (BOOL_FALSE, BOOL_FALSE, BOOL_FALSE),
     (BOOL_FALSE, BOOL_UNDEF, BOOL_UNDEF),
     (BOOL_FALSE, BOOL_TRUE, BOOL_TRUE),
@@ -94,7 +174,7 @@ pub const BOOL_OR: u32 = define_222(&[
     (BOOL_MISSING, BOOL_MISSING, BOOL_MISSING),
 ]);
 
-pub const BOOL_AND: u32 = define_222(&[
+pub const BOOL_AND: Op222 = Op222::new(&[
     (BOOL_FALSE, BOOL_FALSE, BOOL_FALSE),
     (BOOL_FALSE, BOOL_UNDEF, BOOL_FALSE),
     (BOOL_FALSE, BOOL_TRUE, BOOL_FALSE),
@@ -113,14 +193,14 @@ pub const BOOL_AND: u32 = define_222(&[
     (BOOL_MISSING, BOOL_MISSING, BOOL_MISSING),
 ]);
 
-pub const EVAL_FALSE: u32 = 0;
-pub const EVAL_UNIT: u32 = 1;
-pub const EVAL_UNDEF: u32 = 2;
-pub const EVAL_TRUE: u32 = 3;
+pub const EVAL_FALSE: Bit2 = Bit2(0);
+pub const EVAL_UNIT: Bit2 = Bit2(1);
+pub const EVAL_UNDEF: Bit2 = Bit2(2);
+pub const EVAL_TRUE: Bit2 = Bit2(3);
 
 pub const EVAL_FORMAT: [char; 4] = ['0', '!', '?', '1'];
 
-pub const FOLD_POS: u32 = define_222(&[
+pub const FOLD_POS: Op222 = Op222::new(&[
     (EVAL_FALSE, BOOL_FALSE, EVAL_FALSE),
     (EVAL_FALSE, BOOL_UNDEF, EVAL_UNIT),
     (EVAL_FALSE, BOOL_TRUE, EVAL_TRUE),
@@ -139,7 +219,7 @@ pub const FOLD_POS: u32 = define_222(&[
     (EVAL_TRUE, BOOL_MISSING, EVAL_TRUE),
 ]);
 
-pub const FOLD_NEG: u32 = define_222(&[
+pub const FOLD_NEG: Op222 = Op222::new(&[
     (EVAL_FALSE, BOOL_FALSE, EVAL_TRUE),
     (EVAL_FALSE, BOOL_UNDEF, EVAL_UNIT),
     (EVAL_FALSE, BOOL_TRUE, EVAL_FALSE),
@@ -158,7 +238,7 @@ pub const FOLD_NEG: u32 = define_222(&[
     (EVAL_TRUE, BOOL_MISSING, EVAL_TRUE),
 ]);
 
-pub const EVAL_AND: u32 = define_222(&[
+pub const EVAL_AND: Op222 = Op222::new(&[
     (EVAL_FALSE, EVAL_FALSE, EVAL_FALSE),
     (EVAL_FALSE, EVAL_UNIT, EVAL_FALSE),
     (EVAL_FALSE, EVAL_UNDEF, EVAL_FALSE),
@@ -181,70 +261,37 @@ pub const EVAL_AND: u32 = define_222(&[
 mod tests {
     use super::*;
 
-    fn idempotent_222(oper: u32) -> bool {
-        for a in 0..3 {
-            if operation_222(oper, a, a) != a {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    fn commutative_222(oper: u32) -> bool {
-        for a in 0..3 {
-            for b in 0..3 {
-                if operation_222(oper, a, b) != operation_222(oper, b, a) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    fn associative_222(oper: u32) -> bool {
-        for a in 0..3 {
-            for b in 0..3 {
-                for c in 0..3 {
-                    if operation_222(oper, operation_222(oper, a, b), c)
-                        != operation_222(oper, a, operation_222(oper, b, c))
-                    {
-                        return false;
-                    }
-                }
-            }
-        }
-        return true;
-    }
-
     #[test]
     fn laws() {
-        assert!(idempotent_222(BOOL_AND));
-        assert!(commutative_222(BOOL_AND));
-        assert!(associative_222(BOOL_AND));
+        assert!(BOOL_AND.idempotent());
+        assert!(BOOL_AND.commutative());
+        assert!(BOOL_AND.associative());
 
-        assert!(idempotent_222(BOOL_OR));
-        assert!(commutative_222(BOOL_OR));
-        assert!(associative_222(BOOL_OR));
+        assert!(BOOL_OR.idempotent());
+        assert!(BOOL_OR.commutative());
+        assert!(BOOL_OR.associative());
 
-        assert!(idempotent_222(EVAL_AND));
-        assert!(commutative_222(EVAL_AND));
-        assert!(associative_222(EVAL_AND));
+        assert!(EVAL_AND.idempotent());
+        assert!(EVAL_AND.commutative());
+        assert!(EVAL_AND.associative());
 
         for a in 0..3 {
+            let a = Bit2(a);
             for b in 0..3 {
-                assert_eq!(
-                    operation_222(FOLD_POS, a, b),
-                    operation_222(FOLD_NEG, a, operation_22(BOOL_NOT, b))
-                );
+                let b = Bit2(b);
+                assert_eq!(FOLD_POS.of(a, b), FOLD_NEG.of(a, BOOL_NOT.of(b)));
             }
         }
 
         for a in 0..3 {
+            let a = Bit2(a);
             for b in 0..3 {
+                let b = Bit2(b);
                 for c in 0..3 {
+                    let c = Bit2(c);
                     assert_eq!(
-                        operation_222(FOLD_POS, operation_222(FOLD_POS, a, b), c),
-                        operation_222(FOLD_POS, operation_222(FOLD_POS, a, c), b),
+                        FOLD_POS.of(FOLD_POS.of(a, b), c),
+                        FOLD_POS.of(FOLD_POS.of(a, c), b),
                     );
                 }
             }

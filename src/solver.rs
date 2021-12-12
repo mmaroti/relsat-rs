@@ -44,7 +44,7 @@ impl State {
         let mut cor = vec![0; shape.dimension()];
         for pos in shape.positions() {
             shape.coordinates(pos, &mut cor);
-            let val = BOOL_FORMAT[self.assignment.get(pos) as usize];
+            let val = BOOL_FORMAT[self.assignment.get(pos).idx() as usize];
             println!("  {:?} = {}", cor, val);
         }
     }
@@ -254,7 +254,7 @@ impl Clause {
         }
     }
 
-    pub fn propagate(&self) -> u32 {
+    pub fn propagate(&self) -> Bit2 {
         let buffer = self.buffer.borrow();
         let mut result = EVAL_TRUE;
         for pos in 0..buffer.len() {
@@ -266,17 +266,17 @@ impl Clause {
                     lit.propagate(&coordinates);
                 }
             }
-            result = operation_222(EVAL_AND, result, val);
+            result = EVAL_AND.of(result, val);
         }
         result
     }
 
-    pub fn status(&self) -> u32 {
+    pub fn status(&self) -> Bit2 {
         let buffer = self.buffer.borrow_mut();
         let mut result = EVAL_TRUE;
         for pos in 0..buffer.len() {
             let val = buffer.get(pos);
-            result = operation_222(EVAL_AND, result, val);
+            result = EVAL_AND.of(result, val);
         }
         result
     }
@@ -286,7 +286,7 @@ impl Clause {
         let mut cor = vec![0; self.shape.dimension()];
         for pos in self.shape.positions() {
             self.shape.coordinates(pos, &mut cor);
-            let val = EVAL_FORMAT[buffer.get(pos) as usize];
+            let val = EVAL_FORMAT[buffer.get(pos).idx() as usize];
             println!("  {:?} = {}", cor, val);
         }
     }
@@ -305,7 +305,7 @@ impl fmt::Display for Clause {
         }
 
         const TABLE: [&str; 4] = ["false", "unit", "undef", "true"];
-        write!(f, " = {}", TABLE[self.status() as usize])
+        write!(f, " = {}", TABLE[self.status().idx() as usize])
     }
 }
 
