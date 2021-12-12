@@ -76,16 +76,27 @@ fn main() {
 
     // learnt
     sol.add_clause(vec![
+        (true, &equ, vec![0, 1]),
         (false, &one, vec![0]),
         (false, &mul, vec![1, 1, 0]),
         (true, &mul, vec![1, 0, 1]),
     ]);
 
+    // learnt
+    sol.add_clause(vec![
+        (true, &equ, vec![0, 1]),
+        (false, &mul, vec![0, 1, 0]),
+        (false, &mul, vec![1, 1, 0]),
+        (true, &mul, vec![1, 0, 0]),
+    ]);
+
     sol.set_equality(&equ);
-    sol.set_value(&one, &[0], true);
-    sol.set_value(&mul, &[1, 0, 1], false);
-    sol.set_value(&inv, &[1, 1], true);
-    sol.set_value(&inv, &[0, 0], true);
+    sol.search_all();
+
+    // sol.set_value(&mul, &[0, 0, 0], true);
+    // sol.set_value(&mul, &[1, 0, 1], false);
+    // sol.set_value(&mul, &[0, 1, 0], true);
+    // sol.set_value(&mul, &[1, 0, 0], false);
     // sol.set_value(&mul, &[1, 1, 0], true);
 
     sol.propagate();

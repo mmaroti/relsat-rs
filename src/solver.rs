@@ -66,22 +66,37 @@ impl State {
         }
     }
 
-    pub fn current_level(&self) -> usize {
-        self.levels.len()
-    }
-
-    pub fn create_level(&mut self) {
-        self.levels.push(self.trail.len());
-    }
-
-    pub fn cancel_levels(&mut self, level: usize) {
-        let start = self.levels[level];
-        self.levels.truncate(level);
-        for &pos in self.trail[start..].iter() {
-            assert!(self.assignment.get(pos) != BOOL_UNDEF);
-            self.assignment.set(pos, BOOL_UNDEF);
+    pub fn make_decision(&mut self) -> bool {
+        let pos = (0..self.assignment.len()).find(|&i| self.assignment.get(i) == BOOL_UNDEF);
+        if let Some(pos) = pos {
+            self.levels.push(self.trail.len());
+            self.assignment.set(pos, BOOL_TRUE);
+            self.trail.push(pos);
+            println!("make trail={:?} levels={:?}", self.trail, self.levels);
+            true
+        } else {
+            false
         }
-        self.trail.truncate(start);
+    }
+
+    pub fn next_decision(&mut self) -> bool {
+        while let Some(start) = self.levels.pop() {
+            let val = self.assignment.get(self.trail[start]);
+            if val == BOOL_FALSE {
+                continue;
+            }
+            assert!(val == BOOL_TRUE);
+            for &pos in self.trail[start + 1..].iter() {
+                assert!(self.assignment.get(pos) != BOOL_UNDEF);
+                self.assignment.set(pos, BOOL_UNDEF);
+            }
+            self.levels.push(start);
+            self.assignment.set(self.trail[start], BOOL_FALSE);
+            self.trail.truncate(start + 1);
+            println!("next trail={:?} levels={:?}", self.trail, self.levels);
+            return true;
+        }
+        false
     }
 }
 
@@ -385,8 +400,37 @@ impl Solver {
                 num += 1;
             }
         }
+        assert!(res != EVAL_UNIT);
         assert!(res == self.get_status());
         res
+    }
+
+    pub fn search_all(&mut self) {
+        loop {
+            let val = self.propagate();
+            // self.print();
+            if val == EVAL_FALSE {
+                self.print();
+                println!("*** CONTRADICTION ***");
+                break;
+            } else if val == EVAL_TRUE {
+                let mut state = self.state.borrow_mut();
+                println!("solution");
+                for var in self.variables.iter() {
+                    println!("variable {}", var);
+                    state.print_table(&var.shape);
+                }
+                println!("");
+                let ret = state.next_decision();
+                if !ret {
+                    break;
+                }
+            } else {
+                let mut state = self.state.borrow_mut();
+                let ret = state.make_decision();
+                assert!(ret);
+            }
+        }
     }
 
     pub fn print(&self) {
@@ -402,6 +446,8 @@ impl Solver {
             println!("clause {}", cla);
             // cla.print_table();
         }
+        println!("trail = {:?}", self.state.borrow().trail);
+        println!("levels = {:?}", self.state.borrow().levels);
         println!(
             "status = {}",
             EVAL_FORMAT2[self.get_status().idx() as usize]
