@@ -15,7 +15,6 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
@@ -31,7 +30,7 @@ struct State {
 }
 
 impl State {
-    pub fn create_table(&mut self, domains: &[Rc<Domain>]) -> Shape {
+    fn create_table(&mut self, domains: &[Rc<Domain>]) -> Shape {
         let shape = Shape::new(
             domains.iter().map(|d| d.size).collect(),
             self.assignment.len(),
@@ -40,7 +39,7 @@ impl State {
         shape
     }
 
-    pub fn print_table(&self, shape: &Shape) {
+    fn print_table(&self, shape: &Shape) {
         let mut cor = vec![0; shape.dimension()];
         for pos in shape.positions() {
             shape.coordinates(pos, &mut cor);
@@ -49,7 +48,7 @@ impl State {
         }
     }
 
-    pub fn set_value(&mut self, pos: usize, sign: bool) {
+    fn set_value(&mut self, pos: usize, sign: bool) {
         assert!(self.levels.is_empty());
         assert!(self.assignment.get(pos) == BOOL_UNDEF);
         self.assignment
@@ -57,7 +56,7 @@ impl State {
         self.trail.push(pos);
     }
 
-    pub fn propagate(&mut self, pos: usize, sign: bool) {
+    fn propagate(&mut self, pos: usize, sign: bool) {
         let old = self.assignment.get(pos);
         if old == BOOL_UNDEF {
             self.assignment
@@ -66,7 +65,7 @@ impl State {
         }
     }
 
-    pub fn make_decision(&mut self) -> bool {
+    fn make_decision(&mut self) -> bool {
         let pos = (0..self.assignment.len()).find(|&i| self.assignment.get(i) == BOOL_UNDEF);
         if let Some(pos) = pos {
             self.levels.push(self.trail.len());
@@ -79,7 +78,7 @@ impl State {
         }
     }
 
-    pub fn next_decision(&mut self) -> bool {
+    fn next_decision(&mut self) -> bool {
         while let Some(start) = self.levels.pop() {
             let val = self.assignment.get(self.trail[start]);
             if val == BOOL_FALSE {
@@ -125,21 +124,19 @@ impl fmt::Display for Domain {
 
 #[derive(Debug)]
 pub struct Variable {
-    state: Rc<RefCell<State>>,
     shape: Shape,
     name: String,
     domains: Vec<Rc<Domain>>,
 }
 
 impl Variable {
-    fn new(name: &str, domains: Vec<Rc<Domain>>, state: Rc<RefCell<State>>) -> Self {
+    fn new(state: &mut State, name: &str, domains: Vec<Rc<Domain>>) -> Self {
         let name = name.to_string();
-        let shape = state.borrow_mut().create_table(&domains);
+        let shape = state.create_table(&domains);
         Self {
             name,
             domains,
             shape,
-            state,
         }
     }
 }
@@ -161,7 +158,7 @@ impl fmt::Display for Variable {
 }
 
 #[derive(Debug)]
-pub struct Literal {
+struct Literal {
     variable: Rc<Variable>,
     axes: Box<[usize]>,
     positions: ShapeIter,
@@ -169,7 +166,7 @@ pub struct Literal {
 }
 
 impl Literal {
-    pub fn new(shape: &Shape, sign: bool, var: &Rc<Variable>, axes: Vec<usize>) -> Self {
+    fn new(shape: &Shape, sign: bool, var: &Rc<Variable>, axes: Vec<usize>) -> Self {
         let variable = var.clone();
         let axes = axes.into_boxed_slice();
         let positions = variable
@@ -186,17 +183,16 @@ impl Literal {
         }
     }
 
-    pub fn evaluate(&mut self, target: &mut Buffer2) {
-        let source = &self.variable.state.borrow().assignment;
+    fn evaluate(&mut self, state: &State, target: &mut Buffer2) {
         self.positions.reset();
         let op = if self.sign { FOLD_POS } else { FOLD_NEG };
-        target.update(op, source, &mut self.positions);
+        target.update(op, &state.assignment, &mut self.positions);
     }
 
-    pub fn propagate(&self, coordinates: &[usize]) {
+    fn propagate(&self, state: &mut State, coordinates: &[usize]) {
         let coordinates: Vec<usize> = self.axes.iter().map(|&axis| coordinates[axis]).collect();
         let pos = self.variable.shape.position(&coordinates);
-        self.variable.state.borrow_mut().propagate(pos, self.sign);
+        state.propagate(pos, self.sign);
     }
 }
 
@@ -222,7 +218,7 @@ impl fmt::Display for Literal {
 }
 
 #[derive(Debug)]
-pub struct Clause {
+struct Clause {
     domains: Vec<Rc<Domain>>,
     literals: Vec<Literal>,
     shape: Shape,
@@ -230,7 +226,7 @@ pub struct Clause {
 }
 
 impl Clause {
-    pub fn new(shape: Shape, domains: Vec<Rc<Domain>>, literals: Vec<Literal>) -> Self {
+    fn new(shape: Shape, domains: Vec<Rc<Domain>>, literals: Vec<Literal>) -> Self {
         let buffer = Buffer2::new(shape.volume(), EVAL_FALSE);
         Self {
             shape,
@@ -240,14 +236,14 @@ impl Clause {
         }
     }
 
-    pub fn evaluate(&mut self) {
+    fn evaluate(&mut self, state: &State) {
         self.buffer.fill(EVAL_FALSE);
         for lit in self.literals.iter_mut() {
-            lit.evaluate(&mut self.buffer);
+            lit.evaluate(state, &mut self.buffer);
         }
     }
 
-    pub fn get_status(&self) -> Bit2 {
+    fn get_status(&self) -> Bit2 {
         let mut res = EVAL_TRUE;
         for pos in 0..self.buffer.len() {
             let val = self.buffer.get(pos);
@@ -256,7 +252,7 @@ impl Clause {
         res
     }
 
-    pub fn propagate(&mut self) -> Bit2 {
+    fn propagate(&mut self, state: &mut State) -> Bit2 {
         let mut res = EVAL_TRUE;
         for pos in 0..self.buffer.len() {
             let val = self.buffer.get(pos);
@@ -264,7 +260,7 @@ impl Clause {
                 let mut coordinates = vec![0; self.shape.dimension()];
                 self.shape.coordinates(pos, &mut coordinates);
                 for lit in self.literals.iter() {
-                    lit.propagate(&coordinates);
+                    lit.propagate(state, &coordinates);
                 }
             }
             res = EVAL_AND.of(res, val);
@@ -272,7 +268,7 @@ impl Clause {
         res
     }
 
-    pub fn print_table(&self) {
+    fn print_table(&self) {
         let mut cor = vec![0; self.shape.dimension()];
         for pos in self.shape.positions() {
             self.shape.coordinates(pos, &mut cor);
@@ -300,7 +296,7 @@ impl fmt::Display for Clause {
 
 #[derive(Debug, Default)]
 pub struct Solver {
-    state: Rc<RefCell<State>>,
+    state: State,
     domains: Vec<Rc<Domain>>,
     variables: Vec<Rc<Variable>>,
     clauses: Vec<Clause>,
@@ -317,7 +313,7 @@ impl Solver {
     pub fn add_variable(&mut self, name: &str, domains: Vec<&Rc<Domain>>) -> Rc<Variable> {
         assert!(self.variables.iter().all(|rel| rel.name != name));
         let domains = domains.into_iter().cloned().collect();
-        let rel = Rc::new(Variable::new(name, domains, self.state.clone()));
+        let rel = Rc::new(Variable::new(&mut self.state, name, domains));
         self.variables.push(rel.clone());
         rel
     }
@@ -354,17 +350,16 @@ impl Solver {
 
     pub fn set_value(&mut self, var: &Rc<Variable>, coordinates: &[usize], sign: bool) {
         let pos = var.shape.position(coordinates);
-        self.state.borrow_mut().set_value(pos, sign);
+        self.state.set_value(pos, sign);
     }
 
     pub fn set_equality(&mut self, var: &Rc<Variable>) {
-        let mut state = self.state.borrow_mut();
         let shape = &var.shape;
         assert!(shape.dimension() == 2);
         for i in 0..shape.length(0) {
             for j in 0..shape.length(1) {
                 let pos = shape.position(&[i, j]);
-                state.set_value(pos, i == j);
+                self.state.set_value(pos, i == j);
             }
         }
     }
@@ -387,8 +382,8 @@ impl Solver {
             }
             let cla = &mut self.clauses[idx];
             idx += 1;
-            cla.evaluate();
-            let val = cla.propagate();
+            cla.evaluate(&self.state);
+            let val = cla.propagate(&mut self.state);
             if val == EVAL_FALSE {
                 res = EVAL_FALSE;
                 break;
@@ -414,20 +409,18 @@ impl Solver {
                 println!("*** CONTRADICTION ***");
                 break;
             } else if val == EVAL_TRUE {
-                let mut state = self.state.borrow_mut();
                 println!("solution");
                 for var in self.variables.iter() {
                     println!("variable {}", var);
-                    state.print_table(&var.shape);
+                    self.state.print_table(&var.shape);
                 }
-                println!("");
-                let ret = state.next_decision();
+                println!();
+                let ret = self.state.next_decision();
                 if !ret {
                     break;
                 }
             } else {
-                let mut state = self.state.borrow_mut();
-                let ret = state.make_decision();
+                let ret = self.state.make_decision();
                 assert!(ret);
             }
         }
@@ -437,17 +430,16 @@ impl Solver {
         for dom in self.domains.iter() {
             println!("domain {}", dom);
         }
-        let state = self.state.borrow();
         for var in self.variables.iter() {
             println!("variable {}", var);
-            state.print_table(&var.shape);
+            self.state.print_table(&var.shape);
         }
         for cla in self.clauses.iter() {
             println!("clause {}", cla);
             // cla.print_table();
         }
-        println!("trail = {:?}", self.state.borrow().trail);
-        println!("levels = {:?}", self.state.borrow().levels);
+        println!("trail = {:?}", self.state.trail);
+        println!("levels = {:?}", self.state.levels);
         println!(
             "status = {}",
             EVAL_FORMAT2[self.get_status().idx() as usize]

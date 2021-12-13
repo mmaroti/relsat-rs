@@ -74,21 +74,23 @@ fn main() {
         (true, &equ, vec![0, 1]),
     ]);
 
-    // learnt
-    sol.add_clause(vec![
-        (true, &equ, vec![0, 1]),
-        (false, &one, vec![0]),
-        (false, &mul, vec![1, 1, 0]),
-        (true, &mul, vec![1, 0, 1]),
-    ]);
+    if false {
+        // learnt
+        sol.add_clause(vec![
+            (true, &equ, vec![0, 1]),
+            (false, &one, vec![0]),
+            (false, &mul, vec![1, 1, 0]),
+            (true, &mul, vec![1, 0, 1]),
+        ]);
 
-    // learnt
-    sol.add_clause(vec![
-        (true, &equ, vec![0, 1]),
-        (false, &mul, vec![0, 1, 0]),
-        (false, &mul, vec![1, 1, 0]),
-        (true, &mul, vec![1, 0, 0]),
-    ]);
+        // learnt
+        sol.add_clause(vec![
+            (true, &equ, vec![0, 1]),
+            (false, &mul, vec![0, 1, 0]),
+            (false, &mul, vec![1, 1, 0]),
+            (true, &mul, vec![1, 0, 0]),
+        ]);
+    }
 
     sol.set_equality(&equ);
     sol.search_all();
@@ -99,6 +101,6 @@ fn main() {
     // sol.set_value(&mul, &[1, 0, 0], false);
     // sol.set_value(&mul, &[1, 1, 0], true);
 
-    sol.propagate();
-    sol.print();
+    // sol.propagate();
+    // sol.print();
 }
