@@ -20,7 +20,7 @@ use std::rc::Rc;
 
 use super::bitops::*;
 use super::buffer::Buffer2;
-use super::shape::{Shape, ShapeIter};
+use super::shape::{PositionIter, Shape};
 
 #[derive(Debug, Default)]
 struct State {
@@ -48,7 +48,7 @@ impl State {
         }
     }
 
-    fn set_value(&mut self, pos: usize, sign: bool) {
+    fn add_assumption(&mut self, pos: usize, sign: bool) {
         assert!(self.levels.is_empty());
         assert!(self.assignment.get(pos) == BOOL_UNDEF);
         self.assignment
@@ -161,7 +161,7 @@ impl fmt::Display for Variable {
 struct Literal {
     variable: Rc<Variable>,
     axes: Box<[usize]>,
-    positions: ShapeIter,
+    positions: PositionIter,
     sign: bool,
 }
 
@@ -350,7 +350,7 @@ impl Solver {
 
     pub fn set_value(&mut self, var: &Rc<Variable>, coordinates: &[usize], sign: bool) {
         let pos = var.shape.position(coordinates);
-        self.state.set_value(pos, sign);
+        self.state.add_assumption(pos, sign);
     }
 
     pub fn set_equality(&mut self, var: &Rc<Variable>) {
@@ -359,7 +359,7 @@ impl Solver {
         for i in 0..shape.length(0) {
             for j in 0..shape.length(1) {
                 let pos = shape.position(&[i, j]);
-                self.state.set_value(pos, i == j);
+                self.state.add_assumption(pos, i == j);
             }
         }
     }
@@ -406,7 +406,7 @@ impl Solver {
             // self.print();
             if val == EVAL_FALSE {
                 self.print();
-                println!("*** CONTRADICTION ***");
+                println!("*** LEARNING ***");
                 break;
             } else if val == EVAL_TRUE {
                 println!("solution");
@@ -422,6 +422,26 @@ impl Solver {
             } else {
                 let ret = self.state.make_decision();
                 assert!(ret);
+            }
+        }
+    }
+
+    pub fn print_decisions(&self) {
+        for &step in self.state.levels.iter() {
+            let pos = self.state.trail[step];
+            let val = self.state.assignment.get(pos);
+            assert!(val == BOOL_FALSE || val == BOOL_TRUE);
+            for var in self.variables.iter() {
+                if var.shape.positions().contains(&pos) {
+                    let mut coordinates = vec![0; var.shape.dimension()];
+                    var.shape.coordinates(pos, &mut coordinates);
+                    println!(
+                        "decision {}{}{:?}",
+                        if val == BOOL_TRUE { '+' } else { '-' },
+                        var.name,
+                        coordinates,
+                    );
+                }
             }
         }
     }

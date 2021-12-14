@@ -155,8 +155,8 @@ impl ShapeView {
 
     /// Returns an iterator through all valid positions, volume many in total.
     /// You might want to call `simplify` before to speed up the iteration.
-    pub fn positions(&self) -> ShapeIter {
-        ShapeIter::new(self)
+    pub fn positions(&self) -> PositionIter {
+        PositionIter::new(self)
     }
 
     /// Permutes the axes of the given view. The map must be of size
@@ -223,13 +223,13 @@ impl ShapeView {
 
 /// ShapeView iterator that returns all valid positions, size many in total.
 #[derive(Debug)]
-pub struct ShapeIter {
+pub struct PositionIter {
     index: usize,
     entries: Box<[(usize, usize, usize)]>, // coord, dim, stride
     done: bool,
 }
 
-impl ShapeIter {
+impl PositionIter {
     /// Creates a new iterator for the given view.
     fn new(view: &ShapeView) -> Self {
         let mut done = false;
@@ -262,7 +262,7 @@ impl ShapeIter {
     }
 }
 
-impl Iterator for ShapeIter {
+impl Iterator for PositionIter {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
