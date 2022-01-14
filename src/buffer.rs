@@ -188,7 +188,10 @@ impl Buffer2 {
         }
     }
 
-    pub fn update<ITER>(&mut self, op: Op222, other: &Self, iter: &mut ITER)
+    /// Updates all values in this buffer by applying the given binary
+    /// operation to values coming from another buffer indexed by the
+    /// given iterator.
+    pub fn apply<ITER>(&mut self, op: Op222, other: &Self, iter: &mut ITER)
     where
         ITER: Iterator<Item = usize>,
     {

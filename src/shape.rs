@@ -169,14 +169,29 @@ impl ShapeView {
             debug_assert!(strides[x] == (0, 0));
             strides[x] = self.strides[i];
         }
-        let offset = self.offset;
-        Self { strides, offset }
+        Self {
+            strides,
+            offset: self.offset,
+        }
+    }
+
+    /// Permutes two axes of the given view. The two axes can be the same.
+    pub fn swap(&self, axis1: usize, axis2: usize) -> Self {
+        debug_assert!(axis1 < self.strides.len() && axis2 < self.strides.len());
+        let mut strides = self.strides.clone();
+        strides[axis1] = self.strides[axis2];
+        strides[axis2] = self.strides[axis1];
+        Self {
+            strides,
+            offset: self.offset,
+        }
     }
 
     /// Computes the polymer of the given view, which allows the introduction
     /// dummy variables and identification of variables. The map must be of
     /// size dimension. The old coordinate `i` will be placed at the new
-    /// coordinate `map[i]`.
+    /// coordinate `map[i]`. The shapeis the shape of the new view, which is
+    /// used to obtain the lengths of dummy axes.
     pub fn polymer(&self, shape: &Shape, map: &[usize]) -> Self {
         debug_assert!(map.len() == self.strides.len());
         let strides: Vec<(usize, usize)> = shape.lengths.iter().map(|&d| (d, 0)).collect();

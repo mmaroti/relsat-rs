@@ -71,7 +71,7 @@ impl State {
             self.levels.push(self.trail.len());
             self.assignment.set(pos, BOOL_TRUE);
             self.trail.push(pos);
-            println!("make trail={:?} levels={:?}", self.trail, self.levels);
+            // println!("make trail={:?} levels={:?}", self.trail, self.levels);
             true
         } else {
             false
@@ -92,7 +92,7 @@ impl State {
             self.levels.push(start);
             self.assignment.set(self.trail[start], BOOL_FALSE);
             self.trail.truncate(start + 1);
-            println!("next trail={:?} levels={:?}", self.trail, self.levels);
+            // println!("next trail={:?} levels={:?}", self.trail, self.levels);
             return true;
         }
         false
@@ -186,7 +186,7 @@ impl Literal {
     fn evaluate(&mut self, state: &State, target: &mut Buffer2) {
         self.positions.reset();
         let op = if self.sign { FOLD_POS } else { FOLD_NEG };
-        target.update(op, &state.assignment, &mut self.positions);
+        target.apply(op, &state.assignment, &mut self.positions);
     }
 
     fn propagate(&self, state: &mut State, coordinates: &[usize]) {
@@ -294,12 +294,48 @@ impl fmt::Display for Clause {
     }
 }
 
+#[derive(Debug)]
+struct Exist {
+    variable: Rc<Variable>,
+}
+
+impl Exist {
+    fn new(variable: Rc<Variable>) -> Self {
+        Exist { variable }
+    }
+
+    fn get_status(&self, state: &State) -> Bit2 {
+        let shape = &self.variable.shape;
+        let range = shape.positions();
+        let block = shape.length(shape.dimension() - 1);
+
+        let mut value1 = EVAL_TRUE;
+        let mut pos = range.start;
+        while pos < range.end {
+            let mut value2 = EVAL_FALSE;
+            for i in pos..(pos + block) {
+                value2 = FOLD_POS.of(value2, state.assignment.get(i));
+            }
+            value1 = EVAL_AND.of(value1, value2);
+            pos += block;
+        }
+        value1
+    }
+}
+
+impl fmt::Display for Exist {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.variable.fmt(f)
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Solver {
     state: State,
     domains: Vec<Rc<Domain>>,
     variables: Vec<Rc<Variable>>,
     clauses: Vec<Clause>,
+    exists: Vec<Exist>,
 }
 
 impl Solver {
@@ -348,6 +384,10 @@ impl Solver {
         self.clauses.push(cla);
     }
 
+    pub fn add_exist(&mut self, variable: &Rc<Variable>) {
+        self.exists.push(Exist::new(variable.clone()));
+    }
+
     pub fn set_value(&mut self, var: &Rc<Variable>, coordinates: &[usize], sign: bool) {
         let pos = var.shape.position(coordinates);
         self.state.add_assumption(pos, sign);
@@ -364,10 +404,18 @@ impl Solver {
         }
     }
 
-    pub fn get_status(&self) -> Bit2 {
+    pub fn get_clauses_status(&self) -> Bit2 {
         let mut res = EVAL_TRUE;
         for cla in self.clauses.iter() {
             res = EVAL_AND.of(res, cla.get_status());
+        }
+        res
+    }
+
+    pub fn get_exists_status(&self) -> Bit2 {
+        let mut res = EVAL_TRUE;
+        for ext in self.exists.iter() {
+            res = EVAL_AND.of(res, ext.get_status(&self.state));
         }
         res
     }
@@ -396,19 +444,26 @@ impl Solver {
             }
         }
         assert!(res != EVAL_UNIT);
-        assert!(res == self.get_status());
+        assert!(res == self.get_clauses_status());
         res
     }
 
     pub fn search_all(&mut self) {
         loop {
-            let val = self.propagate();
+            let val1 = self.propagate();
+            let val2 = self.get_exists_status();
+
             // self.print();
-            if val == EVAL_FALSE {
+            if val2 == EVAL_FALSE {
+                let ret = self.state.next_decision();
+                if !ret {
+                    break;
+                }
+            } else if val1 == EVAL_FALSE {
                 self.print();
                 println!("*** LEARNING ***");
                 break;
-            } else if val == EVAL_TRUE {
+            } else if val1 == EVAL_TRUE && val2 == EVAL_TRUE {
                 println!("solution");
                 for var in self.variables.iter() {
                     println!("variable {}", var);
@@ -422,6 +477,25 @@ impl Solver {
             } else {
                 let ret = self.state.make_decision();
                 assert!(ret);
+            }
+        }
+    }
+
+    pub fn print_trail(&self) {
+        for &pos in self.state.trail.iter() {
+            let val = self.state.assignment.get(pos);
+            assert!(val == BOOL_FALSE || val == BOOL_TRUE);
+            for var in self.variables.iter() {
+                if var.shape.positions().contains(&pos) {
+                    let mut coordinates = vec![0; var.shape.dimension()];
+                    var.shape.coordinates(pos, &mut coordinates);
+                    println!(
+                        "trail {}{}{:?}",
+                        if val == BOOL_TRUE { '+' } else { '-' },
+                        var.name,
+                        coordinates,
+                    );
+                }
             }
         }
     }
@@ -446,7 +520,7 @@ impl Solver {
         }
     }
 
-    pub fn print(&self) {
+    pub fn print(&mut self) {
         for dom in self.domains.iter() {
             println!("domain {}", dom);
         }
@@ -454,15 +528,23 @@ impl Solver {
             println!("variable {}", var);
             self.state.print_table(&var.shape);
         }
-        for cla in self.clauses.iter() {
+        for cla in self.clauses.iter_mut() {
+            cla.evaluate(&self.state);
             println!("clause {}", cla);
             // cla.print_table();
+        }
+        for ext in self.exists.iter() {
+            println!("exist {}", ext);
         }
         println!("trail = {:?}", self.state.trail);
         println!("levels = {:?}", self.state.levels);
         println!(
-            "status = {}",
-            EVAL_FORMAT2[self.get_status().idx() as usize]
-        )
+            "clauses status = {}",
+            EVAL_FORMAT2[self.get_clauses_status().idx() as usize]
+        );
+        println!(
+            "exists status = {}",
+            EVAL_FORMAT2[self.get_exists_status().idx() as usize]
+        );
     }
 }
