@@ -21,7 +21,6 @@ mod bitops;
 mod buffer;
 mod shape;
 mod solver;
-mod theory;
 mod tokenizer;
 
 use solver::*;
@@ -83,84 +82,40 @@ fn main() {
     // learnt
     if true {
         sol.add_clause(vec![
-            (true, &mul, vec![1, 0, 0]),
-            (false, &mul, vec![1, 2, 2]),
-            (false, &mul, vec![2, 0, 0]),
+            (false, &inv, vec![1, 0]),
+            (false, &one, vec![0]),
+            (true, &equ, vec![0, 1]),
         ]);
 
         sol.add_clause(vec![
+            (false, &inv, vec![0, 0]),
+            (false, &mul, vec![0, 0, 1]),
             (true, &mul, vec![0, 1, 0]),
-            (false, &mul, vec![2, 1, 2]),
-            (false, &mul, vec![2, 2, 0]),
+            (true, &equ, vec![0, 1]),
         ]);
 
         sol.add_clause(vec![
-            (true, &mul, vec![1, 0, 0]),
-            (false, &mul, vec![1, 1, 1]),
-            (false, &mul, vec![1, 2, 0]),
+            (false, &inv, vec![2, 2]),
+            (false, &mul, vec![0, 1, 0]),
+            (false, &mul, vec![0, 2, 0]),
+            (false, &mul, vec![1, 0, 2]),
+            (true, &equ, vec![1, 2]),
         ]);
-
-        sol.add_clause(vec![
-            (true, &mul, vec![0, 2, 0]),
-            (false, &mul, vec![1, 2, 1]),
-            (false, &mul, vec![2, 1, 0]),
-        ]);
-
-        sol.add_clause(vec![
-            (true, &mul, vec![0, 1, 0]),
-            (false, &mul, vec![1, 1, 1]),
-            (false, &mul, vec![2, 1, 0]),
-        ]);
-
-        sol.add_clause(vec![
-            (false, &mul, vec![0, 1, 1]),
-            (true, &mul, vec![1, 0, 1]),
-            (false, &mul, vec![1, 1, 0]),
-        ]);
-
-        // sol.add_clause(vec![
-        //     (false, &inv, vec![1, 0]),
-        //     (false, &one, vec![0]),
-        //     (true, &equ, vec![0, 1]),
-        // ]);
-
-        // sol.add_clause(vec![
-        //     (false, &inv, vec![0, 0]),
-        //     (false, &inv, vec![1, 0]),
-        //     (false, &mul, vec![0, 0, 1]),
-        //     (true, &equ, vec![0, 1]),
-        // ]);
-
-        // sol.add_clause(vec![
-        //     (false, &inv, vec![1, 0]),
-        //     (false, &mul, vec![0, 0, 0]),
-        //     (false, &mul, vec![0, 1, 2]),
-        //     (true, &equ, vec![0, 1]),
-        //     (true, &equ, vec![0, 2]),
-        //     (true, &equ, vec![1, 2]),
-        // ]);
     }
 
     sol.set_equality(&equ);
-    if false {
+    if true {
         // sol.set_value(&mul, &[0, 0, 0], true);
         // sol.set_value(&one, &[0], false);
 
         sol.search_all();
-        sol.print_trail();
-        sol.print_decisions();
     } else {
-        // sol.set_value(&inv, &[0, 0], true);
+        sol.set_value(&inv, &[2, 2], true);
+        sol.set_value(&mul, &[0, 1, 0], true);
+        sol.set_value(&mul, &[0, 2, 0], true);
+        sol.set_value(&mul, &[1, 0, 2], true);
         sol.propagate();
-        // sol.set_value(&inv, &[1, 0], true);
-        sol.propagate();
-        // sol.set_value(&inv, &[2, 0], true);
-        // sol.set_value(&mul, &[0, 0, 0], true);
-        // sol.set_value(&mul, &[0, 0, 0], true);
-        sol.set_value(&one, &[0], true);
-        // sol.set_value(&one, &[1], false);
 
-        sol.propagate();
         sol.print();
         sol.print_trail();
     }

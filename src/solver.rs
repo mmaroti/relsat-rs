@@ -462,6 +462,7 @@ impl Solver {
             } else if val1 == EVAL_FALSE {
                 self.print();
                 println!("*** LEARNING ***");
+                self.print_trail();
                 break;
             } else if val1 == EVAL_TRUE && val2 == EVAL_TRUE {
                 println!("solution");
@@ -481,42 +482,35 @@ impl Solver {
         }
     }
 
-    pub fn print_trail(&self) {
-        for &pos in self.state.trail.iter() {
-            let val = self.state.assignment.get(pos);
-            assert!(val == BOOL_FALSE || val == BOOL_TRUE);
-            for var in self.variables.iter() {
-                if var.shape.positions().contains(&pos) {
-                    let mut coordinates = vec![0; var.shape.dimension()];
-                    var.shape.coordinates(pos, &mut coordinates);
-                    println!(
-                        "trail {}{}{:?}",
-                        if val == BOOL_TRUE { '+' } else { '-' },
-                        var.name,
-                        coordinates,
-                    );
-                }
+    pub fn format_var(&self, pos: usize) -> String {
+        let val = self.state.assignment.get(pos);
+        assert!(val == BOOL_FALSE || val == BOOL_TRUE);
+        for var in self.variables.iter() {
+            if var.shape.positions().contains(&pos) {
+                let mut coordinates = vec![0; var.shape.dimension()];
+                var.shape.coordinates(pos, &mut coordinates);
+                return format!(
+                    "{}{}{:?}",
+                    if val == BOOL_TRUE { '+' } else { '-' },
+                    var.name,
+                    coordinates,
+                );
             }
         }
+        panic!();
     }
 
-    pub fn print_decisions(&self) {
+    pub fn print_trail(&self) {
+        let mut last = 0;
         for &step in self.state.levels.iter() {
-            let pos = self.state.trail[step];
-            let val = self.state.assignment.get(pos);
-            assert!(val == BOOL_FALSE || val == BOOL_TRUE);
-            for var in self.variables.iter() {
-                if var.shape.positions().contains(&pos) {
-                    let mut coordinates = vec![0; var.shape.dimension()];
-                    var.shape.coordinates(pos, &mut coordinates);
-                    println!(
-                        "decision {}{}{:?}",
-                        if val == BOOL_TRUE { '+' } else { '-' },
-                        var.name,
-                        coordinates,
-                    );
-                }
+            for &pos in self.state.trail[last..step].iter() {
+                println!("trail {}", self.format_var(pos));
             }
+            println!("decision {}", self.format_var(self.state.trail[step]));
+            last = step + 1;
+        }
+        for &pos in self.state.trail[last..].iter() {
+            println!("trail {}", self.format_var(pos));
         }
     }
 
