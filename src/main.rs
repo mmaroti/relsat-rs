@@ -27,11 +27,11 @@ use solver::*;
 
 fn main() {
     let mut sol: Solver = Default::default();
-    let set = sol.add_domain("set", 3);
+    let set = sol.add_domain("set", 5);
     let equ = sol.add_variable("equ", vec![&set, &set]);
+    let one = sol.add_variable("one", vec![&set]);
     let inv = sol.add_variable("inv", vec![&set, &set]);
     let mul = sol.add_variable("mul", vec![&set, &set, &set]);
-    let one = sol.add_variable("one", vec![&set]);
 
     sol.add_clause(vec![
         (false, &mul, vec![0, 1, 3]),
@@ -40,11 +40,45 @@ fn main() {
         (true, &mul, vec![0, 5, 4]),
     ]);
 
+    // trivial consequences but not unit propagated
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 0]),
+        (false, &mul, vec![1, 1, 2]),
+        (true, &mul, vec![0, 2, 0]),
+    ]);
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 0, 1]),
+        (false, &mul, vec![1, 0, 2]),
+        (true, &mul, vec![0, 1, 2]),
+    ]);
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 1]),
+        (false, &mul, vec![1, 2, 3]),
+        (true, &mul, vec![0, 3, 3]),
+    ]);
+
     sol.add_clause(vec![
         (false, &mul, vec![1, 2, 3]),
         (false, &mul, vec![0, 3, 4]),
         (false, &mul, vec![0, 1, 5]),
         (true, &mul, vec![5, 2, 4]),
+    ]);
+
+    // trivial consequences but not unit propagated
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 1]),
+        (false, &mul, vec![0, 0, 2]),
+        (true, &mul, vec![2, 1, 1]),
+    ]);
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 0, 1]),
+        (false, &mul, vec![0, 1, 2]),
+        (true, &mul, vec![1, 0, 2]),
+    ]);
+    sol.add_clause(vec![
+        (false, &mul, vec![1, 2, 1]),
+        (false, &mul, vec![0, 1, 3]),
+        (true, &mul, vec![3, 2, 3]),
     ]);
 
     sol.add_clause(vec![
@@ -91,9 +125,10 @@ fn main() {
             (false, &inv, vec![0, 0]),
             (false, &mul, vec![0, 0, 1]),
             (true, &mul, vec![0, 1, 0]),
-            (true, &equ, vec![0, 1]),
         ]);
+    }
 
+    if true {
         sol.add_clause(vec![
             (false, &inv, vec![2, 2]),
             (false, &mul, vec![0, 1, 0]),
@@ -101,22 +136,187 @@ fn main() {
             (false, &mul, vec![1, 0, 2]),
             (true, &equ, vec![1, 2]),
         ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![0, 1]),
+            (false, &mul, vec![0, 0, 0]),
+            (false, &mul, vec![1, 0, 2]),
+            (true, &equ, vec![0, 2]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![2, 2]),
+            (false, &mul, vec![0, 0, 2]),
+            (false, &mul, vec![0, 1, 2]),
+            (false, &mul, vec![0, 2, 0]),
+            (true, &equ, vec![0, 1]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![1, 0]),
+            (false, &mul, vec![0, 1, 1]),
+            (true, &mul, vec![0, 0, 0]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![1, 2]),
+            (false, &mul, vec![0, 0, 2]),
+            (false, &mul, vec![0, 1, 1]),
+            (true, &mul, vec![0, 0, 0]),
+        ]);
     }
 
-    sol.set_equality(&equ);
     if true {
-        // sol.set_value(&mul, &[0, 0, 0], true);
-        // sol.set_value(&one, &[0], false);
+        sol.add_clause(vec![
+            (false, &mul, vec![0, 1, 0]),
+            (false, &mul, vec![1, 1, 2]),
+            (false, &mul, vec![1, 2, 0]),
+            (true, &mul, vec![1, 0, 0]),
+        ]);
 
+        sol.add_clause(vec![
+            (false, &inv, vec![1, 0]),
+            (false, &mul, vec![0, 0, 2]),
+            (false, &mul, vec![0, 1, 2]),
+            (true, &equ, vec![0, 1]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![2, 0]),
+            (false, &mul, vec![0, 2, 3]),
+            (false, &mul, vec![2, 1, 2]),
+            (true, &mul, vec![0, 2, 1]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &mul, vec![0, 0, 2]),
+            (false, &mul, vec![0, 1, 2]),
+            (false, &mul, vec![0, 2, 1]),
+            (true, &mul, vec![1, 2, 1]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![0, 1]),
+            (false, &mul, vec![0, 0, 1]),
+            // (false, &mul, vec![0, 1, 2]),
+            (true, &mul, vec![1, 1, 0]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![2, 3]),
+            (false, &mul, vec![0, 0, 3]),
+            (false, &mul, vec![0, 1, 2]),
+            (false, &mul, vec![0, 2, 1]),
+            (true, &mul, vec![1, 0, 3]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![0, 1]),
+            (false, &inv, vec![2, 1]),
+            (false, &mul, vec![0, 2, 2]),
+            (false, &mul, vec![1, 0, 0]),
+            (true, &equ, vec![0, 2]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![2, 2]),
+            (false, &mul, vec![0, 0, 2]),
+            (false, &mul, vec![0, 1, 3]),
+            (false, &mul, vec![0, 2, 1]),
+            (true, &mul, vec![1, 3, 1]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![1, 3]),
+            (false, &mul, vec![0, 0, 3]),
+            (false, &mul, vec![0, 1, 2]),
+            (false, &mul, vec![0, 2, 2]),
+            (true, &mul, vec![0, 0, 0]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![2, 0]),
+            (false, &mul, vec![0, 0, 3]),
+            (false, &mul, vec![0, 1, 3]),
+            (false, &mul, vec![0, 2, 1]),
+            (true, &mul, vec![0, 1, 1]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![0, 2]),
+            (false, &inv, vec![2, 0]),
+            (false, &mul, vec![0, 0, 3]),
+            (false, &mul, vec![0, 1, 2]),
+            (false, &mul, vec![0, 2, 1]),
+            (true, &equ, vec![1, 3]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![1, 1]),
+            (false, &mul, vec![0, 0, 1]),
+            (false, &mul, vec![0, 1, 2]),
+            (false, &mul, vec![1, 0, 2]),
+            // (false, &mul, vec![0, 2, 3]),
+            (true, &mul, vec![2, 2, 1]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![2, 2]),
+            (false, &mul, vec![0, 0, 2]),
+            (false, &mul, vec![0, 2, 1]),
+            (true, &mul, vec![1, 1, 2]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &inv, vec![0, 3]),
+            (false, &mul, vec![3, 3, 0]),
+            (false, &mul, vec![3, 2, 3]),
+            (false, &mul, vec![0, 3, 1]),
+            (true, &equ, vec![1, 2]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &mul, vec![3, 1, 1]),
+            (false, &mul, vec![0, 0, 2]),
+            (false, &mul, vec![0, 1, 2]),
+            (false, &mul, vec![0, 2, 3]),
+            (true, &mul, vec![3, 0, 1]),
+        ]);
+    }
+
+    if true {
+        sol.add_clause(vec![
+            (false, &mul, vec![3, 1, 1]),
+            (false, &mul, vec![2, 2, 0]),
+            (false, &mul, vec![0, 1, 3]),
+            (false, &mul, vec![0, 2, 3]),
+            (true, &mul, vec![0, 0, 1]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &mul, vec![4, 2, 2]),
+            (false, &mul, vec![0, 0, 3]),
+            (false, &mul, vec![0, 1, 4]),
+            (false, &mul, vec![0, 2, 3]),
+            (false, &mul, vec![0, 3, 1]),
+            (true, &mul, vec![4, 0, 2]),
+        ]);
+    }
+
+    if true {
+        sol.set_equality(&equ);
         sol.search_all();
     } else {
-        sol.set_value(&inv, &[2, 2], true);
-        sol.set_value(&mul, &[0, 1, 0], true);
-        sol.set_value(&mul, &[0, 2, 0], true);
-        sol.set_value(&mul, &[1, 0, 2], true);
+        sol.set_value(&mul, &[3, 1, 1], true);
+        // sol.set_value(&mul, &[0, 0, 2], true);
+        sol.set_value(&mul, &[2, 2, 0], true);
+        sol.set_value(&mul, &[0, 1, 3], true);
+        sol.set_value(&mul, &[0, 2, 3], true);
+        sol.set_value(&mul, &[0, 0, 1], false);
         sol.propagate();
 
+        sol.evaluate_all();
         sol.print();
-        sol.print_trail();
+        sol.print_steps();
     }
 }

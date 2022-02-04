@@ -62,10 +62,13 @@ impl Shape {
     /// Returns the position in a flat array of the element at the given
     /// coordinates. The number of coordinates must match the dimension.
     /// The last coordinate is advancing the fastest.
-    pub fn position(&self, coordinates: &[usize]) -> usize {
+    pub fn position<'a, ITER>(&self, coordinates: ITER) -> usize
+    where
+        ITER: ExactSizeIterator<Item = &'a usize>,
+    {
         debug_assert!(coordinates.len() == self.lengths.len());
         let mut n = 0;
-        for (&c, &d) in coordinates.iter().zip(self.lengths.iter()) {
+        for (&c, &d) in coordinates.zip(self.lengths.iter()) {
             debug_assert!(c < d);
             n = n * d + c;
         }

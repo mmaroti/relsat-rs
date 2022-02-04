@@ -23,9 +23,15 @@ use super::buffer::Buffer2;
 use super::shape::{PositionIter, Shape};
 
 #[derive(Debug, Default)]
+struct Step {
+    bvar: usize,
+    reason: Vec<usize>,
+}
+
+#[derive(Debug, Default)]
 struct State {
     assignment: Buffer2,
-    trail: Vec<usize>,
+    steps: Vec<Step>,
     levels: Vec<usize>,
 }
 
@@ -48,30 +54,22 @@ impl State {
         }
     }
 
-    fn add_assumption(&mut self, pos: usize, sign: bool) {
-        assert!(self.levels.is_empty());
+    fn assign(&mut self, pos: usize, sign: bool, reason: Vec<usize>) {
         assert!(self.assignment.get(pos) == BOOL_UNDEF);
         self.assignment
             .set(pos, if sign { BOOL_TRUE } else { BOOL_FALSE });
-        self.trail.push(pos);
-    }
-
-    fn propagate(&mut self, pos: usize, sign: bool) {
-        let old = self.assignment.get(pos);
-        if old == BOOL_UNDEF {
-            self.assignment
-                .set(pos, if sign { BOOL_TRUE } else { BOOL_FALSE });
-            self.trail.push(pos);
-        }
+        self.steps.push(Step { bvar: pos, reason });
     }
 
     fn make_decision(&mut self) -> bool {
         let pos = (0..self.assignment.len()).find(|&i| self.assignment.get(i) == BOOL_UNDEF);
         if let Some(pos) = pos {
-            self.levels.push(self.trail.len());
+            self.levels.push(self.steps.len());
             self.assignment.set(pos, BOOL_TRUE);
-            self.trail.push(pos);
-            // println!("make trail={:?} levels={:?}", self.trail, self.levels);
+            self.steps.push(Step {
+                bvar: pos,
+                reason: vec![],
+            });
             true
         } else {
             false
@@ -79,20 +77,19 @@ impl State {
     }
 
     fn next_decision(&mut self) -> bool {
-        while let Some(start) = self.levels.pop() {
-            let val = self.assignment.get(self.trail[start]);
+        while let Some(level) = self.levels.pop() {
+            let val = self.assignment.get(self.steps[level].bvar);
             if val == BOOL_FALSE {
                 continue;
             }
             assert!(val == BOOL_TRUE);
-            for &pos in self.trail[start + 1..].iter() {
-                assert!(self.assignment.get(pos) != BOOL_UNDEF);
-                self.assignment.set(pos, BOOL_UNDEF);
+            for step in self.steps[level + 1..].iter() {
+                assert!(self.assignment.get(step.bvar) != BOOL_UNDEF);
+                self.assignment.set(step.bvar, BOOL_UNDEF);
             }
-            self.levels.push(start);
-            self.assignment.set(self.trail[start], BOOL_FALSE);
-            self.trail.truncate(start + 1);
-            // println!("next trail={:?} levels={:?}", self.trail, self.levels);
+            self.levels.push(level);
+            self.assignment.set(self.steps[level].bvar, BOOL_FALSE);
+            self.steps.truncate(level + 1);
             return true;
         }
         false
@@ -189,10 +186,10 @@ impl Literal {
         target.apply(op, &state.assignment, &mut self.positions);
     }
 
-    fn propagate(&self, state: &mut State, coordinates: &[usize]) {
-        let coordinates: Vec<usize> = self.axes.iter().map(|&axis| coordinates[axis]).collect();
-        let pos = self.variable.shape.position(&coordinates);
-        state.propagate(pos, self.sign);
+    fn position(&self, coordinates: &[usize]) -> usize {
+        self.variable
+            .shape
+            .position(self.axes.iter().map(|&axis| &coordinates[axis]))
     }
 }
 
@@ -253,19 +250,48 @@ impl Clause {
     }
 
     fn propagate(&mut self, state: &mut State) -> Bit2 {
+        let mut coordinates = vec![0; self.shape.dimension()];
         let mut res = EVAL_TRUE;
         for pos in 0..self.buffer.len() {
             let val = self.buffer.get(pos);
             if val == EVAL_UNIT {
-                let mut coordinates = vec![0; self.shape.dimension()];
                 self.shape.coordinates(pos, &mut coordinates);
+                let mut unit = 0;
+                let mut sign = None;
+                let mut reason = vec![];
                 for lit in self.literals.iter() {
-                    lit.propagate(state, &coordinates);
+                    let bvar = lit.position(&coordinates);
+                    if state.assignment.get(bvar) == BOOL_UNDEF {
+                        assert!(sign.is_none());
+                        sign = Some(lit.sign);
+                        unit = bvar;
+                    } else {
+                        reason.push(bvar);
+                    }
+                }
+                if let Some(sign) = sign {
+                    state.assign(unit, sign, reason);
                 }
             }
             res = EVAL_AND.of(res, val);
         }
         res
+    }
+
+    fn get_failure(&self) -> Option<Vec<usize>> {
+        for pos in 0..self.buffer.len() {
+            if self.buffer.get(pos) == EVAL_FALSE {
+                let mut coordinates = vec![0; self.shape.dimension()];
+                self.shape.coordinates(pos, &mut coordinates);
+                return Some(
+                    self.literals
+                        .iter()
+                        .map(|lit| lit.position(&coordinates))
+                        .collect(),
+                );
+            }
+        }
+        None
     }
 
     fn print_table(&self) {
@@ -389,8 +415,8 @@ impl Solver {
     }
 
     pub fn set_value(&mut self, var: &Rc<Variable>, coordinates: &[usize], sign: bool) {
-        let pos = var.shape.position(coordinates);
-        self.state.add_assumption(pos, sign);
+        let pos = var.shape.position(coordinates.iter());
+        self.state.assign(pos, sign, vec![]);
     }
 
     pub fn set_equality(&mut self, var: &Rc<Variable>) {
@@ -398,8 +424,8 @@ impl Solver {
         assert!(shape.dimension() == 2);
         for i in 0..shape.length(0) {
             for j in 0..shape.length(1) {
-                let pos = shape.position(&[i, j]);
-                self.state.add_assumption(pos, i == j);
+                let pos = shape.position([i, j].iter());
+                self.state.assign(pos, i == j, vec![]);
             }
         }
     }
@@ -418,6 +444,12 @@ impl Solver {
             res = EVAL_AND.of(res, ext.get_status(&self.state));
         }
         res
+    }
+
+    pub fn evaluate_all(&mut self) {
+        for cla in self.clauses.iter_mut() {
+            cla.evaluate(&mut self.state);
+        }
     }
 
     pub fn propagate(&mut self) -> Bit2 {
@@ -453,16 +485,16 @@ impl Solver {
             let val1 = self.propagate();
             let val2 = self.get_exists_status();
 
-            // self.print();
             if val2 == EVAL_FALSE {
                 let ret = self.state.next_decision();
                 if !ret {
                     break;
                 }
             } else if val1 == EVAL_FALSE {
+                // self.evaluate_all();
                 self.print();
                 println!("*** LEARNING ***");
-                self.print_trail();
+                self.print_steps();
                 break;
             } else if val1 == EVAL_TRUE && val2 == EVAL_TRUE {
                 println!("solution");
@@ -482,39 +514,47 @@ impl Solver {
         }
     }
 
-    pub fn format_var(&self, pos: usize) -> String {
-        let val = self.state.assignment.get(pos);
-        assert!(val == BOOL_FALSE || val == BOOL_TRUE);
-        for var in self.variables.iter() {
-            if var.shape.positions().contains(&pos) {
-                let mut coordinates = vec![0; var.shape.dimension()];
-                var.shape.coordinates(pos, &mut coordinates);
-                return format!(
-                    "{}{}{:?}",
-                    if val == BOOL_TRUE { '+' } else { '-' },
-                    var.name,
-                    coordinates,
-                );
+    fn lookup_var(&self, bvar: usize) -> &Rc<Variable> {
+        for rvar in self.variables.iter() {
+            if rvar.shape.positions().contains(&bvar) {
+                return rvar;
             }
         }
         panic!();
     }
 
-    pub fn print_trail(&self) {
-        let mut last = 0;
-        for &step in self.state.levels.iter() {
-            for &pos in self.state.trail[last..step].iter() {
-                println!("trail {}", self.format_var(pos));
-            }
-            println!("decision {}", self.format_var(self.state.trail[step]));
-            last = step + 1;
-        }
-        for &pos in self.state.trail[last..].iter() {
-            println!("trail {}", self.format_var(pos));
+    fn format_var(&self, bvar: usize) -> String {
+        let bval = self.state.assignment.get(bvar);
+        assert!(bval == BOOL_FALSE || bval == BOOL_TRUE);
+
+        let rvar = self.lookup_var(bvar);
+        let mut coordinates = vec![0; rvar.shape.dimension()];
+        rvar.shape.coordinates(bvar, &mut coordinates);
+
+        format!(
+            "{}{}{:?}",
+            if bval == BOOL_TRUE { '+' } else { '-' },
+            rvar.name,
+            coordinates,
+        )
+    }
+
+    fn print_step(&self, step: &Step) {
+        let reason: Vec<String> = step
+            .reason
+            .iter()
+            .map(|&bvar| self.format_var(bvar))
+            .collect();
+        println!("step {} from {:?}", self.format_var(step.bvar), reason);
+    }
+
+    pub fn print_steps(&self) {
+        for step in self.state.steps.iter() {
+            self.print_step(step);
         }
     }
 
-    pub fn print(&mut self) {
+    pub fn print(&self) {
         for dom in self.domains.iter() {
             println!("domain {}", dom);
         }
@@ -522,15 +562,21 @@ impl Solver {
             println!("variable {}", var);
             self.state.print_table(&var.shape);
         }
-        for cla in self.clauses.iter_mut() {
-            cla.evaluate(&self.state);
+        for cla in self.clauses.iter() {
             println!("clause {}", cla);
-            // cla.print_table();
+            if let Some(failure) = cla.get_failure() {
+                // duh, this is negated
+                let failure: Vec<String> = failure
+                    .into_iter()
+                    .map(|bvar| self.format_var(bvar))
+                    .collect();
+                println!("failure {:?}", failure);
+            }
         }
         for ext in self.exists.iter() {
             println!("exist {}", ext);
         }
-        println!("trail = {:?}", self.state.trail);
+        println!("steps = {:?}", self.state.steps);
         println!("levels = {:?}", self.state.levels);
         println!(
             "clauses status = {}",
