@@ -28,11 +28,23 @@ use solver::*;
 
 fn main() {
     let mut sol: Solver = Default::default();
-    let set = sol.add_domain("set", 4);
-    let equ = sol.add_variable("equ", vec![&set, &set]);
+    let set = sol.add_domain("set", 3);
     let one = sol.add_variable("one", vec![&set]);
     let inv = sol.add_variable("inv", vec![&set, &set]);
     let mul = sol.add_variable("mul", vec![&set, &set, &set]);
+    let equ = sol.add_variable("equ", vec![&set, &set]);
+
+    if true {
+        sol.add_clause(vec![(true, &equ, vec![0, 0])]);
+
+        sol.add_clause(vec![(false, &equ, vec![0, 1]), (true, &equ, vec![1, 0])]);
+
+        sol.add_clause(vec![
+            (false, &equ, vec![0, 1]),
+            (false, &equ, vec![0, 2]),
+            (true, &equ, vec![0, 2]),
+        ]);
+    }
 
     sol.add_clause(vec![
         (false, &mul, vec![0, 1, 3]),
@@ -90,19 +102,53 @@ fn main() {
 
     sol.add_clause(vec![(false, &one, vec![0]), (true, &mul, vec![0, 1, 1])]);
 
-    sol.add_clause(vec![
-        (false, &mul, vec![0, 1, 2]),
-        (false, &mul, vec![0, 1, 3]),
-        (true, &equ, vec![2, 3]),
-    ]);
+    if false {
+        sol.add_clause(vec![
+            (false, &mul, vec![0, 1, 2]),
+            (false, &mul, vec![0, 1, 3]),
+            (true, &equ, vec![2, 3]),
+        ]);
+    } else {
+        sol.add_clause(vec![
+            (false, &equ, vec![0, 1]),
+            (false, &mul, vec![0, 2, 3]),
+            (false, &mul, vec![1, 2, 4]),
+            (true, &equ, vec![3, 4]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &equ, vec![0, 1]),
+            (false, &mul, vec![2, 0, 3]),
+            (false, &mul, vec![2, 1, 4]),
+            (true, &equ, vec![3, 4]),
+        ]);
+    }
 
     sol.add_exist(&mul);
 
-    sol.add_clause(vec![
-        (false, &inv, vec![0, 1]),
-        (false, &inv, vec![0, 2]),
-        (true, &equ, vec![1, 2]),
-    ]);
+    if false {
+        sol.add_clause(vec![
+            (false, &inv, vec![0, 1]),
+            (false, &inv, vec![0, 2]),
+            (true, &equ, vec![1, 2]),
+        ]);
+    } else {
+        sol.add_clause(vec![
+            (false, &inv, vec![0, 1]),
+            (false, &inv, vec![0, 2]),
+            (true, &equ, vec![1, 2]),
+        ]);
+        sol.add_clause(vec![
+            (false, &inv, vec![0, 1]),
+            (false, &equ, vec![1, 2]),
+            (true, &inv, vec![0, 2]),
+        ]);
+        sol.add_clause(vec![
+            (false, &inv, vec![0, 1]),
+            (false, &equ, vec![0, 2]),
+            (true, &inv, vec![2, 1]),
+        ]);
+    }
 
     sol.add_exist(&inv);
 
@@ -114,18 +160,27 @@ fn main() {
 
     sol.add_exist(&one);
 
-    sol.set_equality(&equ);
-    sol.set_value(&mul, &[0, 0, 0], true);
-    sol.set_value(&one, &[1], true);
+    // sol.set_equality(&equ);
 
     if true {
-        sol.search_all();
-    } else {
         sol.propagate();
-        sol.evaluate_all();
-        sol.print();
-        sol.print_steps();
+        sol.set_value(&one, &[0], true);
+        sol.set_value(&inv, &[0, 0], false);
+        sol.propagate();
+        sol.set_value(&inv, &[0, 1], true);
+        sol.propagate();
+        sol.set_value(&inv, &[1, 1], true);
+        sol.propagate();
+        sol.set_value(&mul, &[1, 0, 2], true);
+    } else if false {
+        sol.add_clause(vec![
+            (false, &one, vec![0]),
+            (false, &inv, vec![0, 1]),
+            (true, &mul, vec![1, 0, 0]),
+        ]);
     }
+
+    sol.search_all();
 }
 
 fn main_old() {

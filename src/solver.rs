@@ -486,17 +486,19 @@ impl Solver {
             let val2 = self.get_exists_status();
 
             if val2 == EVAL_FALSE {
-                println!("next decision");
+                println!("*** EXISTS ***");
+                self.evaluate_all();
                 self.print();
                 self.print_steps();
-                let ret = self.state.next_decision();
-                if !ret {
-                    break;
-                }
+                break;
+                // let ret = self.state.next_decision();
+                // if !ret {
+                //    break;
+                // }
             } else if val1 == EVAL_FALSE {
-                // self.evaluate_all();
-                self.print();
                 println!("*** LEARNING ***");
+                self.evaluate_all();
+                self.print();
                 self.print_steps();
                 break;
             } else if val1 == EVAL_TRUE && val2 == EVAL_TRUE {
@@ -511,7 +513,6 @@ impl Solver {
                     break;
                 }
             } else {
-                println!("make decision");
                 let ret = self.state.make_decision();
                 assert!(ret);
             }
@@ -578,7 +579,12 @@ impl Solver {
             }
         }
         for ext in self.exists.iter() {
-            println!("exist {}", ext);
+            // println!("exist {}", ext);
+            println!(
+                "exists {} = {}",
+                ext.variable,
+                EVAL_FORMAT2[ext.get_status(&self.state).idx() as usize]
+            );
         }
         println!("steps = {:?}", self.state.steps);
         println!("levels = {:?}", self.state.levels);
