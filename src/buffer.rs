@@ -140,7 +140,8 @@ impl Buffer2 {
     #[inline(always)]
     pub fn get(&self, pos: usize) -> Bit2 {
         debug_assert!(pos < self.len);
-        let data = self.data[pos / 16];
+        // let data = self.data[pos / 16];
+        let data = unsafe { self.data.get_unchecked(pos / 16) };
         let data = data >> (2 * (pos % 16));
         Bit2::new(data & 3)
     }

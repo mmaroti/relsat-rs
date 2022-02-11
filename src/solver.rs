@@ -486,6 +486,9 @@ impl Solver {
             let val2 = self.get_exists_status();
 
             if val2 == EVAL_FALSE {
+                println!("next decision");
+                self.print();
+                self.print_steps();
                 let ret = self.state.next_decision();
                 if !ret {
                     break;
@@ -508,6 +511,7 @@ impl Solver {
                     break;
                 }
             } else {
+                println!("make decision");
                 let ret = self.state.make_decision();
                 assert!(ret);
             }

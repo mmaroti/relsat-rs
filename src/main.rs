@@ -21,11 +21,114 @@ mod bitops;
 mod buffer;
 mod shape;
 mod solver;
+mod theory;
 mod tokenizer;
 
 use solver::*;
 
 fn main() {
+    let mut sol: Solver = Default::default();
+    let set = sol.add_domain("set", 4);
+    let equ = sol.add_variable("equ", vec![&set, &set]);
+    let one = sol.add_variable("one", vec![&set]);
+    let inv = sol.add_variable("inv", vec![&set, &set]);
+    let mul = sol.add_variable("mul", vec![&set, &set, &set]);
+
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 3]),
+        (false, &mul, vec![3, 2, 4]),
+        (false, &mul, vec![1, 2, 5]),
+        (true, &mul, vec![0, 5, 4]),
+    ]);
+
+    // trivial consequences but not unit propagated
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 0]),
+        (false, &mul, vec![1, 1, 2]),
+        (true, &mul, vec![0, 2, 0]),
+    ]);
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 0, 1]),
+        (false, &mul, vec![1, 0, 2]),
+        (true, &mul, vec![0, 1, 2]),
+    ]);
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 1]),
+        (false, &mul, vec![1, 2, 3]),
+        (true, &mul, vec![0, 3, 3]),
+    ]);
+
+    sol.add_clause(vec![
+        (false, &mul, vec![1, 2, 3]),
+        (false, &mul, vec![0, 3, 4]),
+        (false, &mul, vec![0, 1, 5]),
+        (true, &mul, vec![5, 2, 4]),
+    ]);
+
+    // trivial consequences but not unit propagated
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 1]),
+        (false, &mul, vec![0, 0, 2]),
+        (true, &mul, vec![2, 1, 1]),
+    ]);
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 0, 1]),
+        (false, &mul, vec![0, 1, 2]),
+        (true, &mul, vec![1, 0, 2]),
+    ]);
+    sol.add_clause(vec![
+        (false, &mul, vec![1, 2, 1]),
+        (false, &mul, vec![0, 1, 3]),
+        (true, &mul, vec![3, 2, 3]),
+    ]);
+
+    sol.add_clause(vec![
+        (false, &inv, vec![0, 1]),
+        (false, &mul, vec![1, 0, 2]),
+        (true, &one, vec![2]),
+    ]);
+
+    sol.add_clause(vec![(false, &one, vec![0]), (true, &mul, vec![0, 1, 1])]);
+
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 2]),
+        (false, &mul, vec![0, 1, 3]),
+        (true, &equ, vec![2, 3]),
+    ]);
+
+    sol.add_exist(&mul);
+
+    sol.add_clause(vec![
+        (false, &inv, vec![0, 1]),
+        (false, &inv, vec![0, 2]),
+        (true, &equ, vec![1, 2]),
+    ]);
+
+    sol.add_exist(&inv);
+
+    sol.add_clause(vec![
+        (false, &one, vec![0]),
+        (false, &one, vec![1]),
+        (true, &equ, vec![0, 1]),
+    ]);
+
+    sol.add_exist(&one);
+
+    sol.set_equality(&equ);
+    sol.set_value(&mul, &[0, 0, 0], true);
+    sol.set_value(&one, &[1], true);
+
+    if true {
+        sol.search_all();
+    } else {
+        sol.propagate();
+        sol.evaluate_all();
+        sol.print();
+        sol.print_steps();
+    }
+}
+
+fn main_old() {
     let mut sol: Solver = Default::default();
     let set = sol.add_domain("set", 5);
     let equ = sol.add_variable("equ", vec![&set, &set]);
