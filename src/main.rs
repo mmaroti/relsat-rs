@@ -28,12 +28,13 @@ use solver::*;
 
 fn main() {
     let mut sol: Solver = Default::default();
-    let set = sol.add_domain("set", 3);
+    let set = sol.add_domain("set", 4);
     let one = sol.add_variable("one", vec![&set]);
     let inv = sol.add_variable("inv", vec![&set, &set]);
     let mul = sol.add_variable("mul", vec![&set, &set, &set]);
     let equ = sol.add_variable("equ", vec![&set, &set]);
 
+    // equivalence relation
     if true {
         sol.add_clause(vec![(true, &equ, vec![0, 0])]);
 
@@ -102,42 +103,41 @@ fn main() {
 
     sol.add_clause(vec![(false, &one, vec![0]), (true, &mul, vec![0, 1, 1])]);
 
-    if false {
+    // mul is an operation
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 2]),
+        (false, &mul, vec![0, 1, 3]),
+        (true, &equ, vec![2, 3]),
+    ]);
+    if true {
         sol.add_clause(vec![
             (false, &mul, vec![0, 1, 2]),
-            (false, &mul, vec![0, 1, 3]),
-            (true, &equ, vec![2, 3]),
-        ]);
-    } else {
-        sol.add_clause(vec![
-            (false, &equ, vec![0, 1]),
-            (false, &mul, vec![0, 2, 3]),
-            (false, &mul, vec![1, 2, 4]),
-            (true, &equ, vec![3, 4]),
+            (false, &equ, vec![0, 3]),
+            (true, &mul, vec![3, 1, 2]),
         ]);
 
         sol.add_clause(vec![
-            (false, &equ, vec![0, 1]),
-            (false, &mul, vec![2, 0, 3]),
-            (false, &mul, vec![2, 1, 4]),
-            (true, &equ, vec![3, 4]),
+            (false, &mul, vec![0, 1, 2]),
+            (false, &equ, vec![1, 3]),
+            (true, &mul, vec![0, 3, 2]),
+        ]);
+
+        sol.add_clause(vec![
+            (false, &mul, vec![0, 1, 2]),
+            (false, &equ, vec![2, 3]),
+            (true, &mul, vec![0, 1, 3]),
         ]);
     }
 
     sol.add_exist(&mul);
 
-    if false {
-        sol.add_clause(vec![
-            (false, &inv, vec![0, 1]),
-            (false, &inv, vec![0, 2]),
-            (true, &equ, vec![1, 2]),
-        ]);
-    } else {
-        sol.add_clause(vec![
-            (false, &inv, vec![0, 1]),
-            (false, &inv, vec![0, 2]),
-            (true, &equ, vec![1, 2]),
-        ]);
+    // inv is an operation
+    sol.add_clause(vec![
+        (false, &inv, vec![0, 1]),
+        (false, &inv, vec![0, 2]),
+        (true, &equ, vec![1, 2]),
+    ]);
+    if true {
         sol.add_clause(vec![
             (false, &inv, vec![0, 1]),
             (false, &equ, vec![1, 2]),
@@ -157,27 +157,111 @@ fn main() {
         (false, &one, vec![1]),
         (true, &equ, vec![0, 1]),
     ]);
+    if true {
+        sol.add_clause(vec![
+            (false, &one, vec![0]),
+            (false, &equ, vec![0, 1]),
+            (true, &one, vec![1]),
+        ]);
+    }
 
     sol.add_exist(&one);
 
     // sol.set_equality(&equ);
 
-    if true {
+    let choice = 99;
+    if choice == 1 {
         sol.propagate();
         sol.set_value(&one, &[0], true);
         sol.set_value(&inv, &[0, 0], false);
+        sol.set_value(&inv, &[0, 1], true);
+    } else if choice == 11 {
         sol.propagate();
+        sol.set_value(&one, &[0], true);
+        sol.set_value(&inv, &[0, 0], false);
         sol.set_value(&inv, &[0, 1], true);
         sol.propagate();
         sol.set_value(&inv, &[1, 1], true);
-        sol.propagate();
         sol.set_value(&mul, &[1, 0, 2], true);
-    } else if false {
+    } else if choice == 2 {
+        sol.propagate();
+        sol.set_value(&one, &[0], false);
+        sol.set_value(&one, &[1], true);
+    } else if choice == 99 {
         sol.add_clause(vec![
             (false, &one, vec![0]),
             (false, &inv, vec![0, 1]),
-            (true, &mul, vec![1, 0, 0]),
+            (false, &inv, vec![1, 1]),
+            (true, &inv, vec![0, 0]),
         ]);
+    }
+
+    if false {
+        sol.add_clause(vec![
+            (false, &one, vec![1]),
+            (false, &inv, vec![0, 0]),
+            (false, &inv, vec![1, 0]),
+            (true, &one, vec![0]),
+        ]);
+    }
+
+    let choice = 99;
+    if choice == 1 {
+        sol.propagate();
+        sol.set_value(&one, &[0], true);
+        sol.set_value(&inv, &[0, 0], false);
+        sol.set_value(&inv, &[0, 1], true);
+    } else if choice == 11 {
+        sol.propagate();
+        sol.set_value(&one, &[0], true);
+        sol.set_value(&inv, &[0, 0], false);
+        sol.set_value(&inv, &[0, 1], true);
+        sol.propagate();
+        sol.set_value(&inv, &[1, 2], true);
+    } else if choice == 12 {
+        sol.propagate();
+        sol.set_value(&one, &[0], true);
+        sol.set_value(&inv, &[0, 0], false);
+        sol.set_value(&inv, &[0, 1], true);
+        sol.propagate();
+        sol.set_value(&inv, &[1, 2], true);
+        sol.propagate();
+        sol.set_value(&inv, &[2, 1], true);
+        sol.set_value(&mul, &[1, 0, 3], true);
+    } else if choice == 99 {
+        sol.add_clause(vec![
+            (false, &one, vec![0]),
+            (false, &inv, vec![0, 1]),
+            (false, &inv, vec![1, 2]),
+            (false, &inv, vec![2, 1]),
+            (true, &inv, vec![0, 0]),
+        ]);
+    }
+
+    let choice = 3;
+    if choice == 1 {
+        sol.propagate();
+        sol.set_value(&one, &[0], true);
+        sol.set_value(&inv, &[0, 0], false);
+        sol.set_value(&inv, &[0, 1], true);
+    } else if choice == 2 {
+        sol.propagate();
+        sol.set_value(&one, &[0], true);
+        sol.set_value(&inv, &[0, 0], false);
+        sol.set_value(&inv, &[0, 1], true);
+        sol.propagate();
+        sol.set_value(&inv, &[1, 2], true);
+    } else if choice == 3 {
+        sol.propagate();
+        sol.set_value(&one, &[0], true);
+        sol.set_value(&inv, &[0, 0], false);
+        sol.set_value(&inv, &[0, 1], true);
+        sol.propagate();
+        sol.set_value(&inv, &[1, 2], true);
+        sol.propagate();
+        sol.set_value(&inv, &[2, 2], true);
+        sol.set_value(&mul, &[1, 0, 0], true);
+        sol.set_value(&mul, &[2, 1, 3], true);
     }
 
     sol.search_all();

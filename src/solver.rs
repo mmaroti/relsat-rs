@@ -448,7 +448,7 @@ impl Solver {
 
     pub fn evaluate_all(&mut self) {
         for cla in self.clauses.iter_mut() {
-            cla.evaluate(&mut self.state);
+            cla.evaluate(&self.state);
         }
     }
 
@@ -485,24 +485,24 @@ impl Solver {
             let val1 = self.propagate();
             let val2 = self.get_exists_status();
 
-            if val2 == EVAL_FALSE {
-                println!("*** EXISTS ***");
-                self.evaluate_all();
-                self.print();
-                self.print_steps();
-                break;
-                // let ret = self.state.next_decision();
-                // if !ret {
-                //    break;
-                // }
-            } else if val1 == EVAL_FALSE {
+            if val1 == EVAL_FALSE {
                 println!("*** LEARNING ***");
                 self.evaluate_all();
                 self.print();
                 self.print_steps();
                 break;
+            } else if val2 == EVAL_FALSE {
+                println!("*** EXISTS ***");
+                self.evaluate_all();
+                self.print();
+                self.print_steps();
+                println!();
+                let ret = self.state.next_decision();
+                if !ret {
+                    break;
+                }
             } else if val1 == EVAL_TRUE && val2 == EVAL_TRUE {
-                println!("solution");
+                println!("*** SOLUTION ***");
                 for var in self.variables.iter() {
                     println!("variable {}", var);
                     self.state.print_table(&var.shape);
