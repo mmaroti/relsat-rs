@@ -347,6 +347,25 @@ impl Exist {
         }
         value1
     }
+
+    fn get_failure(&self, state: &State) -> Option<usize> {
+        let shape = &self.variable.shape;
+        let range = shape.positions();
+        let block = shape.length(shape.dimension() - 1);
+
+        let mut pos = range.start;
+        while pos < range.end {
+            let mut value2 = EVAL_FALSE;
+            for i in pos..(pos + block) {
+                value2 = FOLD_POS.of(value2, state.assignment.get(i));
+            }
+            if value2 == EVAL_FALSE {
+                return Some(pos);
+            }
+            pos += block;
+        }
+        None
+    }
 }
 
 impl fmt::Display for Exist {
@@ -414,7 +433,7 @@ impl Solver {
         self.exists.push(Exist::new(variable.clone()));
     }
 
-    pub fn set_value(&mut self, var: &Rc<Variable>, coordinates: &[usize], sign: bool) {
+    pub fn set_value(&mut self, sign: bool, var: &Rc<Variable>, coordinates: &[usize]) {
         let pos = var.shape.position(coordinates.iter());
         self.state.assign(pos, sign, vec![]);
     }
@@ -490,6 +509,7 @@ impl Solver {
                 self.evaluate_all();
                 self.print();
                 self.print_steps();
+                println!("*** END OF LEARNING ***");
                 break;
             } else if val2 == EVAL_FALSE {
                 println!("*** EXISTS ***");
@@ -585,6 +605,9 @@ impl Solver {
                 ext.variable,
                 EVAL_FORMAT2[ext.get_status(&self.state).idx() as usize]
             );
+            if let Some(failure) = ext.get_failure(&self.state) {
+                println!("failure {:?}", self.format_var(failure));
+            }
         }
         println!("steps = {:?}", self.state.steps);
         println!("levels = {:?}", self.state.levels);
