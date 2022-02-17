@@ -65,32 +65,36 @@ fn get_offset(domains: &[Rc<Domain>], coords: &[usize]) -> usize {
     offset
 }
 
-#[derive(Debug, Default, Clone)]
-struct BooleanVariable {}
-
 #[derive(Debug)]
 struct Predicate {
     name: String,
     domains: Box<[Rc<Domain>]>,
-    first_variable: usize,
-    num_variables: usize,
+    var_start: usize,
+    var_count: usize,
 }
 
 impl Predicate {
-    fn new(solver: &Solver, name: String, domains: Vec<Rc<Domain>>) -> Self {
+    fn new(name: String, domains: Vec<Rc<Domain>>, var_start: usize) -> Self {
         let domains = domains.into_boxed_slice();
-        let first_variable = solver.num_variables();
-        let num_variables = domains.iter().map(|dom| dom.size).product();
+        let var_count = domains.iter().map(|dom| dom.size).product();
         Self {
             name,
             domains,
-            first_variable,
-            num_variables,
+            var_start,
+            var_count,
         }
     }
 
     fn arity(&self) -> usize {
         self.domains.len()
+    }
+
+    fn get_coords(&self, offset: usize, coords: &mut [usize]) {
+        get_coords(&self.domains, offset, coords);
+    }
+
+    fn get_offset(&self, coords: &[usize]) -> usize {
+        get_offset(&self.domains, coords)
     }
 }
 
@@ -110,23 +114,70 @@ impl fmt::Display for Predicate {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 struct LiteralIdx(usize);
+
+#[derive(Debug, Clone, Copy)]
+struct Literal<'a> {
+    negated: bool,
+    predicate: &'a Rc<Predicate>,
+    var_offset: usize,
+}
+
+impl<'a> Literal<'a> {
+    fn new(negated: bool, predicate: &'a Rc<Predicate>, var_offset: usize) -> Self {
+        debug_assert!(var_offset < predicate.var_count);
+        Self {
+            negated,
+            predicate,
+            var_offset,
+        }
+    }
+
+    fn idx(&self) -> LiteralIdx {
+        debug_assert!(self.var_offset < self.predicate.var_count);
+        let idx = self.predicate.var_start + self.var_offset;
+        LiteralIdx((idx << 1) + self.negated as usize)
+    }
+}
+
+impl<'a> fmt::Display for Literal<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut coords = vec![0; self.predicate.arity()];
+        self.predicate.get_coords(self.var_offset, &mut coords);
+        write!(
+            f,
+            "{}{}[",
+            if self.negated { '-' } else { '+' },
+            self.predicate.name
+        )?;
+        let mut first = true;
+        for coord in coords.iter() {
+            if first {
+                first = false;
+            } else {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", coord)?;
+        }
+        write!(f, "]")
+    }
+}
 
 #[derive(Debug)]
 struct AtomicFormula {
-    sign: bool,
+    negated: bool,
     predicate: Rc<Predicate>,
     variables: Box<[usize]>,
 }
 
 impl AtomicFormula {
-    fn new(sign: bool, predicate: Rc<Predicate>, variables: Vec<usize>) -> Self {
+    fn new(negated: bool, predicate: Rc<Predicate>, variables: Vec<usize>) -> Self {
         let variables = variables.into_boxed_slice();
         assert_eq!(predicate.arity(), variables.len());
 
         Self {
-            sign,
+            negated,
             predicate,
             variables,
         }
@@ -138,7 +189,7 @@ impl fmt::Display for AtomicFormula {
         write!(
             f,
             "{}{}(",
-            if self.sign { '+' } else { '-' },
+            if self.negated { '-' } else { '+' },
             self.predicate.name
         )?;
         let mut first = true;
@@ -158,14 +209,17 @@ impl fmt::Display for AtomicFormula {
 struct UniversalFormula {
     domains: Box<[Rc<Domain>]>,
     disjunction: Box<[AtomicFormula]>,
+    cla_count: usize,
 }
 
 impl UniversalFormula {
-    fn new(disjunction: Vec<(bool, Rc<Predicate>, Vec<usize>)>) -> Self {
+    fn new<ITER>(disjunction: ITER) -> Self
+    where
+        ITER: ExactSizeIterator<Item = (bool, Rc<Predicate>, Vec<usize>)>,
+    {
         let mut domains: Vec<Option<Rc<Domain>>> = Default::default();
         let disjunction: Vec<AtomicFormula> = disjunction
-            .into_iter()
-            .map(|(sign, pred, vars)| {
+            .map(|(neg, pred, vars)| {
                 for (pos, &var) in vars.iter().enumerate() {
                     if domains.len() <= var {
                         domains.resize(var + 1, None);
@@ -178,19 +232,30 @@ impl UniversalFormula {
                         *dom2 = Some(dom1.clone());
                     }
                 }
-                AtomicFormula::new(sign, pred, vars)
+                AtomicFormula::new(neg, pred, vars)
             })
             .collect();
 
         let domains: Vec<Rc<Domain>> = domains.into_iter().map(|d| d.unwrap()).collect();
+        let cla_count = domains.iter().map(|dom| dom.size()).product();
+
         Self {
             domains: domains.into_boxed_slice(),
             disjunction: disjunction.into_boxed_slice(),
+            cla_count,
         }
     }
 
     fn arity(&self) -> usize {
         self.domains.len()
+    }
+
+    fn get_coords(&self, offset: usize, coords: &mut [usize]) {
+        get_coords(&self.domains, offset, coords);
+    }
+
+    fn get_offset(&self, coords: &[usize]) -> usize {
+        get_offset(&self.domains, coords)
     }
 }
 
@@ -212,15 +277,16 @@ impl fmt::Display for UniversalFormula {
 #[derive(Debug, Default)]
 pub struct Solver {
     domains: Vec<Rc<Domain>>,
-    variables: Vec<BooleanVariable>,
+    values: Vec<i8>,
     predicates: Vec<Rc<Predicate>>,
     formulas: Vec<UniversalFormula>,
+    cla_count: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct DomainIdx(usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub struct PredicateIdx(usize);
 
 impl Solver {
@@ -230,32 +296,48 @@ impl Solver {
         idx
     }
 
-    pub fn num_variables(&self) -> usize {
-        self.variables.len()
-    }
-
     pub fn add_predicate(&mut self, name: String, domains: Vec<DomainIdx>) -> PredicateIdx {
         let domains: Vec<Rc<Domain>> = domains
             .into_iter()
             .map(|idx| self.domains[idx.0].clone())
             .collect();
         let idx = PredicateIdx(self.predicates.len());
-        let pred = Rc::new(Predicate::new(self, name, domains));
-        self.variables.resize(
-            self.variables.len() + pred.num_variables,
-            Default::default(),
-        );
+        let pred = Rc::new(Predicate::new(name, domains, self.values.len()));
+        self.values.resize(self.values.len() + pred.var_count, 0);
         self.predicates.push(pred);
         idx
     }
 
     pub fn add_formula(&mut self, disjunction: Vec<(bool, PredicateIdx, Vec<usize>)>) {
-        let disjunction: Vec<(bool, Rc<Predicate>, Vec<usize>)> = disjunction
+        let disjunction = disjunction
             .into_iter()
-            .map(|(sign, pred, vars)| (sign, self.predicates[pred.0].clone(), vars))
-            .collect();
+            .map(|(pos, pred, vars)| (!pos, self.predicates[pred.0].clone(), vars));
         let formula = UniversalFormula::new(disjunction);
+        self.cla_count += formula.cla_count;
         self.formulas.push(formula);
+    }
+
+    fn get_literal(&self, idx: LiteralIdx) -> Literal {
+        let negated = idx.0 & 1 != 0;
+        let mut var_offset = idx.0 >> 1;
+        for predicate in self.predicates.iter() {
+            if var_offset < predicate.var_count {
+                let lit = Literal::new(negated, predicate, var_offset);
+                debug_assert!(lit.idx().0 == idx.0);
+                return lit;
+            }
+            var_offset -= predicate.var_count;
+        }
+        panic!();
+    }
+
+    fn get_value(&self, idx: LiteralIdx) -> i8 {
+        let value = self.values[idx.0 >> 1];
+        if idx.0 & 1 != 0 {
+            -value
+        } else {
+            value
+        }
     }
 
     pub fn print(&self) {
@@ -267,6 +349,11 @@ impl Solver {
         }
         for form in self.formulas.iter() {
             println!("formula {}", form);
+        }
+        println!("variable count {}", self.values.len());
+        println!("clause count {}", self.cla_count);
+        for idx in 0..50 {
+            println!("literal {}", self.get_literal(LiteralIdx(idx)));
         }
     }
 }
