@@ -16,7 +16,7 @@
 */
 
 use std::rc::Rc;
-use std::{fmt, ptr};
+use std::{fmt, ops, ptr};
 
 struct SolverItem<'a, ITEM: ?Sized>(&'a Solver, &'a ITEM);
 
@@ -114,37 +114,69 @@ impl fmt::Display for Predicate {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LiteralIdx(usize);
 
-#[derive(Debug, Clone, Copy)]
+impl LiteralIdx {
+    fn new(negated: bool, variable: usize) -> Self {
+        debug_assert!(variable <= (usize::MAX >> 1));
+        Self((variable << 1) + (negated as usize))
+    }
+
+    fn negated(self) -> bool {
+        (self.0 & 1) != 0
+    }
+
+    fn variable(self) -> usize {
+        self.0 >> 1
+    }
+}
+
+impl ops::Not for LiteralIdx {
+    type Output = Self;
+
+    fn not(self) -> Self {
+        LiteralIdx(self.0 ^ 1)
+    }
+}
+
+impl ops::BitXor<bool> for LiteralIdx {
+    type Output = Self;
+
+    fn bitxor(self, rhs: bool) -> Self {
+        LiteralIdx(self.0 ^ (rhs as usize))
+    }
+}
+
+#[derive(Debug, Clone)]
 struct Literal<'a> {
     negated: bool,
     predicate: &'a Rc<Predicate>,
-    var_offset: usize,
+    coords: Vec<usize>,
 }
 
 impl<'a> Literal<'a> {
-    fn new(negated: bool, predicate: &'a Rc<Predicate>, var_offset: usize) -> Self {
-        debug_assert!(var_offset < predicate.var_count);
+    fn new(negated: bool, predicate: &'a Rc<Predicate>, coords: Vec<usize>) -> Self {
+        debug_assert_eq!(coords.len(), predicate.arity());
         Self {
             negated,
             predicate,
-            var_offset,
+            coords,
         }
     }
 
     fn idx(&self) -> LiteralIdx {
-        debug_assert!(self.var_offset < self.predicate.var_count);
-        let idx = self.predicate.var_start + self.var_offset;
-        LiteralIdx((idx << 1) + self.negated as usize)
+        let var = self.predicate.var_start + self.predicate.get_offset(&self.coords);
+        LiteralIdx::new(self.negated, var)
+    }
+
+    fn destroy(self) -> Vec<usize> {
+        self.coords
     }
 }
 
 impl<'a> fmt::Display for Literal<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut coords = vec![0; self.predicate.arity()];
-        self.predicate.get_coords(self.var_offset, &mut coords);
         write!(
             f,
             "{}{}[",
@@ -152,7 +184,7 @@ impl<'a> fmt::Display for Literal<'a> {
             self.predicate.name
         )?;
         let mut first = true;
-        for coord in coords.iter() {
+        for coord in self.coords.iter() {
             if first {
                 first = false;
             } else {
@@ -209,11 +241,12 @@ impl fmt::Display for AtomicFormula {
 struct UniversalFormula {
     domains: Box<[Rc<Domain>]>,
     disjunction: Box<[AtomicFormula]>,
+    cla_start: usize,
     cla_count: usize,
 }
 
 impl UniversalFormula {
-    fn new<ITER>(disjunction: ITER) -> Self
+    fn new<ITER>(disjunction: ITER, cla_start: usize) -> Self
     where
         ITER: ExactSizeIterator<Item = (bool, Rc<Predicate>, Vec<usize>)>,
     {
@@ -242,6 +275,7 @@ impl UniversalFormula {
         Self {
             domains: domains.into_boxed_slice(),
             disjunction: disjunction.into_boxed_slice(),
+            cla_start,
             cla_count,
         }
     }
@@ -269,6 +303,66 @@ impl fmt::Display for UniversalFormula {
                 write!(f, " | ")?;
             }
             write!(f, "{}", atom)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ClauseIdx(usize);
+
+#[derive(Debug, Clone)]
+struct Clause<'a> {
+    formula: &'a UniversalFormula,
+    coords: Vec<usize>,
+}
+
+impl<'a> Clause<'a> {
+    fn new(formula: &'a UniversalFormula, coords: Vec<usize>) -> Self {
+        debug_assert_eq!(coords.len(), formula.arity());
+        Self { formula, coords }
+    }
+
+    fn idx(&self) -> ClauseIdx {
+        let cla_offset = self.formula.get_offset(&self.coords);
+        ClauseIdx(self.formula.cla_start + cla_offset)
+    }
+
+    fn literals(&self) -> Vec<Literal> {
+        self.formula
+            .disjunction
+            .iter()
+            .map(|atom| {
+                Literal::new(
+                    atom.negated,
+                    &atom.predicate,
+                    atom.variables.iter().map(|&var| self.coords[var]).collect(),
+                )
+            })
+            .collect()
+    }
+
+    fn destroy(self) -> Vec<usize> {
+        self.coords
+    }
+}
+
+impl<'a> fmt::Display for Clause<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut coords = vec![0; 0];
+        let mut first = true;
+        for atom in self.formula.disjunction.iter() {
+            if first {
+                first = false;
+            } else {
+                write!(f, " | ")?;
+            }
+
+            coords.clear();
+            coords.extend(atom.variables.iter().map(|&var| self.coords[var]));
+            let lit = Literal::new(atom.negated, &atom.predicate, coords);
+            write!(f, "{}", lit)?;
+            coords = lit.destroy();
         }
         Ok(())
     }
@@ -312,28 +406,45 @@ impl Solver {
         let disjunction = disjunction
             .into_iter()
             .map(|(pos, pred, vars)| (!pos, self.predicates[pred.0].clone(), vars));
-        let formula = UniversalFormula::new(disjunction);
+        let formula = UniversalFormula::new(disjunction, self.cla_count);
         self.cla_count += formula.cla_count;
         self.formulas.push(formula);
     }
 
     fn get_literal(&self, idx: LiteralIdx) -> Literal {
-        let negated = idx.0 & 1 != 0;
-        let mut var_offset = idx.0 >> 1;
+        let negated = idx.negated();
+        let mut offset = idx.variable();
         for predicate in self.predicates.iter() {
-            if var_offset < predicate.var_count {
-                let lit = Literal::new(negated, predicate, var_offset);
-                debug_assert!(lit.idx().0 == idx.0);
+            if offset < predicate.var_count {
+                let mut coords = vec![0; predicate.arity()];
+                predicate.get_coords(offset, &mut coords);
+                let lit = Literal::new(negated, predicate, coords);
+                debug_assert_eq!(lit.idx(), idx);
                 return lit;
             }
-            var_offset -= predicate.var_count;
+            offset -= predicate.var_count;
+        }
+        panic!();
+    }
+
+    fn get_clause(&self, idx: ClauseIdx) -> Clause {
+        let mut offset = idx.0;
+        for formula in self.formulas.iter() {
+            if offset < formula.cla_count {
+                let mut coords = vec![0; formula.arity()];
+                formula.get_coords(offset, &mut coords);
+                let cla = Clause::new(formula, coords);
+                debug_assert_eq!(cla.idx(), idx);
+                return cla;
+            }
+            offset -= formula.cla_count;
         }
         panic!();
     }
 
     fn get_value(&self, idx: LiteralIdx) -> i8 {
-        let value = self.values[idx.0 >> 1];
-        if idx.0 & 1 != 0 {
+        let value = self.values[idx.variable()];
+        if idx.negated() {
             -value
         } else {
             value
@@ -354,6 +465,9 @@ impl Solver {
         println!("clause count {}", self.cla_count);
         for idx in 0..50 {
             println!("literal {}", self.get_literal(LiteralIdx(idx)));
+        }
+        for idx in 0..50 {
+            println!("clause {}", self.get_clause(ClauseIdx(idx)));
         }
     }
 }
