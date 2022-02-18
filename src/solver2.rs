@@ -368,6 +368,44 @@ impl<'a> fmt::Display for Clause<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct Watcher {
+    predicate: Rc<Predicate>,
+    equalities: Box<[(usize, usize)]>,
+}
+
+impl Watcher {
+    fn new(formula: &UniversalFormula, atom: usize) -> Self {
+        let atom = &formula.disjunction[atom];
+
+        let predicate = atom.predicate.clone();
+        let mut equalities = vec![];
+        {
+            let mut lookup = vec![None; formula.arity()];
+            for (var1, &pos1) in atom.variables.iter().enumerate() {
+                if let Some(var2) = lookup[pos1] {
+                    equalities.push((var1, var2));
+                } else {
+                    lookup[pos1] = Some(var1);
+                }
+            }
+        }
+        let equalities = equalities.into_boxed_slice();
+
+        Self {
+            predicate,
+            equalities,
+        }
+    }
+
+    fn check(&self, coords: &[usize]) -> bool {
+        debug_assert!(coords.len() == self.predicate.arity());
+        self.equalities
+            .iter()
+            .all(|&(var1, var2)| coords[var1] == var2)
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Solver {
     domains: Vec<Rc<Domain>>,
@@ -463,11 +501,8 @@ impl Solver {
         }
         println!("variable count {}", self.values.len());
         println!("clause count {}", self.cla_count);
-        for idx in 0..50 {
-            println!("literal {}", self.get_literal(LiteralIdx(idx)));
-        }
-        for idx in 0..50 {
-            println!("clause {}", self.get_clause(ClauseIdx(idx)));
-        }
+        let watcher = Watcher::new(&self.formulas[6], 1);
+        println!("{:?}", watcher);
+        println!("{}", watcher.check(&[0, 1, 1]));
     }
 }
