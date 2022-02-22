@@ -220,6 +220,13 @@ impl AtomicFormula {
             variables,
         }
     }
+
+    fn get_literal(&self, coords: &[usize]) -> LiteralIdx {
+        let offset = self
+            .predicate
+            .get_offset(self.variables.iter().map(|&i| coords[i]));
+        LiteralIdx::new(self.negated, offset)
+    }
 }
 
 impl fmt::Display for AtomicFormula {
@@ -377,6 +384,44 @@ impl<'a> fmt::Display for Clause<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Watcher2Prog {
+    ForAll(u32),
+    Pred(u32),
+}
+
+struct Watcher2 {
+    formula: Rc<UniversalFormula>,
+    program: Box<[Watcher2Prog]>,
+}
+
+impl Watcher2 {
+    fn has_false(&self, state: &State, coords: &mut [usize], step: usize) -> bool {
+        debug_assert!(step > 0);
+        match self.program.get(step) {
+            None => true,
+            Some(&Watcher2Prog::Pred(pred)) => {
+                let atom = &self.formula.disjunction[pred as usize];
+                if state.get_value(atom.get_literal(coords)) < 0 {
+                    self.has_false(state, coords, step + 1)
+                } else {
+                    false
+                }
+            }
+            Some(&Watcher2Prog::ForAll(var)) => {
+                let size = self.formula.domains[var as usize].size();
+                for coord in 0..size {
+                    coords[var as usize] = coord;
+                    if self.has_false(state, coords, step + 1) {
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
+}
+
 trait Watcher: fmt::Debug {
     /// Searchers all combination of coordinates and unit propagates assuming
     /// that all previous values were false.
@@ -484,7 +529,7 @@ pub struct Solver {
     state: State,
     domains: Vec<Rc<Domain>>,
     predicates: Vec<Rc<Predicate>>,
-    formulas: Vec<UniversalFormula>,
+    formulas: Vec<Rc<UniversalFormula>>,
     cla_count: usize,
 }
 
@@ -518,7 +563,7 @@ impl Solver {
         let disjunction = disjunction
             .into_iter()
             .map(|(pos, pred, vars)| (!pos, self.predicates[pred.0].clone(), vars));
-        let formula = UniversalFormula::new(disjunction, self.cla_count);
+        let formula = Rc::new(UniversalFormula::new(disjunction, self.cla_count));
         self.cla_count += formula.cla_count;
         self.formulas.push(formula);
     }
