@@ -18,7 +18,7 @@
 use std::rc::Rc;
 use std::{fmt, ops, ptr};
 
-struct SolverItem<'a, ITEM: ?Sized>(&'a Solver, &'a ITEM);
+struct SolverItem<'a, ITEM: ?Sized>(&'a State, &'a ITEM);
 
 #[derive(Debug)]
 struct Domain {
@@ -54,10 +54,13 @@ fn get_coords(domains: &[Rc<Domain>], mut offset: usize, coords: &mut [usize]) {
     debug_assert_eq!(offset, 0);
 }
 
-fn get_offset(domains: &[Rc<Domain>], coords: &[usize]) -> usize {
+fn get_offset<I>(domains: &[Rc<Domain>], coords: I) -> usize
+where
+    I: ExactSizeIterator<Item = usize>,
+{
     debug_assert_eq!(domains.len(), coords.len());
     let mut offset = 0;
-    for (size, &coord) in domains.iter().map(|dom| dom.size()).zip(coords.iter()) {
+    for (size, coord) in domains.iter().map(|dom| dom.size()).zip(coords) {
         debug_assert!(coord < size);
         offset *= size;
         offset += coord;
@@ -93,7 +96,10 @@ impl Predicate {
         get_coords(&self.domains, offset, coords);
     }
 
-    fn get_offset(&self, coords: &[usize]) -> usize {
+    fn get_offset<I>(&self, coords: I) -> usize
+    where
+        I: ExactSizeIterator<Item = usize>,
+    {
         get_offset(&self.domains, coords)
     }
 }
@@ -166,7 +172,7 @@ impl<'a> Literal<'a> {
     }
 
     fn idx(&self) -> LiteralIdx {
-        let var = self.predicate.var_start + self.predicate.get_offset(&self.coords);
+        let var = self.predicate.var_start + self.predicate.get_offset(self.coords.iter().cloned());
         LiteralIdx::new(self.negated, var)
     }
 
@@ -288,7 +294,10 @@ impl UniversalFormula {
         get_coords(&self.domains, offset, coords);
     }
 
-    fn get_offset(&self, coords: &[usize]) -> usize {
+    fn get_offset<I>(&self, coords: I) -> usize
+    where
+        I: ExactSizeIterator<Item = usize>,
+    {
         get_offset(&self.domains, coords)
     }
 }
@@ -324,7 +333,7 @@ impl<'a> Clause<'a> {
     }
 
     fn idx(&self) -> ClauseIdx {
-        let cla_offset = self.formula.get_offset(&self.coords);
+        let cla_offset = self.formula.get_offset(self.coords.iter().cloned());
         ClauseIdx(self.formula.cla_start + cla_offset)
     }
 
@@ -368,48 +377,112 @@ impl<'a> fmt::Display for Clause<'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct Watcher {
-    predicate: Rc<Predicate>,
-    equalities: Box<[(usize, usize)]>,
+trait Watcher: fmt::Debug {
+    /// Searchers all combination of coordinates and unit propagates assuming
+    /// that all previous values were false.
+    fn propagate(&self, state: &mut State, coords: &mut Vec<usize>);
+
+    /// Returns true if for some combination of coordinates all subsequent
+    /// predicate becomes false.
+    fn has_false(&self, state: &State, coords: &mut Vec<usize>) -> bool;
 }
 
-impl Watcher {
-    fn new(formula: &UniversalFormula, atom: usize) -> Self {
-        let atom = &formula.disjunction[atom];
+struct WatcherLast;
 
-        let predicate = atom.predicate.clone();
-        let mut equalities = vec![];
-        {
-            let mut lookup = vec![None; formula.arity()];
-            for (var1, &pos1) in atom.variables.iter().enumerate() {
-                if let Some(var2) = lookup[pos1] {
-                    equalities.push((var1, var2));
-                } else {
-                    lookup[pos1] = Some(var1);
-                }
-            }
-        }
-        let equalities = equalities.into_boxed_slice();
+impl fmt::Debug for WatcherLast {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("WatcherLast").finish()
+    }
+}
 
-        Self {
-            predicate,
-            equalities,
+impl Watcher for WatcherLast {
+    fn propagate(&self, _state: &mut State, _coords: &mut Vec<usize>) {}
+
+    fn has_false(&self, _state: &State, _coords: &mut Vec<usize>) -> bool {
+        true
+    }
+}
+
+struct WatcherPred {
+    negated: bool,
+    predicate: Rc<Predicate>,
+    variables: Box<[usize]>,
+    next: Box<dyn Watcher>,
+}
+
+impl fmt::Debug for WatcherPred {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("WatcherPred")
+            .field("megated", &self.negated)
+            .field("predicate", &self.predicate)
+            .field("variables", &self.variables)
+            .field("next", &self.next)
+            .finish()
+    }
+}
+
+impl WatcherPred {
+    fn get_literal(&self, coords: &[usize]) -> LiteralIdx {
+        let offset = self
+            .predicate
+            .get_offset(self.variables.iter().map(|&i| coords[i]));
+        LiteralIdx::new(self.negated, offset)
+    }
+}
+
+impl Watcher for WatcherPred {
+    fn propagate(&self, state: &mut State, coords: &mut Vec<usize>) {
+        let lit = self.get_literal(coords);
+        let val = state.get_value(lit);
+        if val < 0 {
+            self.next.propagate(state, coords);
+        } else if val == 0 && self.next.has_false(state, coords) {
+            state.enqueue(lit);
         }
     }
 
-    fn check(&self, coords: &[usize]) -> bool {
-        debug_assert!(coords.len() == self.predicate.arity());
-        self.equalities
-            .iter()
-            .all(|&(var1, var2)| coords[var1] == var2)
+    fn has_false(&self, solver: &State, coords: &mut Vec<usize>) -> bool {
+        let val = solver.get_value(self.get_literal(coords));
+        if val < 0 {
+            self.next.has_false(solver, coords)
+        } else {
+            false
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct State {
+    values: Vec<i8>,
+}
+
+impl State {
+    fn get_variables(&self) -> usize {
+        self.values.len()
+    }
+
+    fn set_variables(&mut self, count: usize) {
+        self.values.resize(count, 0);
+    }
+
+    fn get_value(&self, idx: LiteralIdx) -> i8 {
+        let value = self.values[idx.variable()];
+        if idx.negated() {
+            -value
+        } else {
+            value
+        }
+    }
+
+    fn enqueue(&mut self, lit: LiteralIdx) {
+        assert!(self.get_value(lit) == 0);
     }
 }
 
 #[derive(Debug, Default)]
 pub struct Solver {
+    state: State,
     domains: Vec<Rc<Domain>>,
-    values: Vec<i8>,
     predicates: Vec<Rc<Predicate>>,
     formulas: Vec<UniversalFormula>,
     cla_count: usize,
@@ -434,8 +507,9 @@ impl Solver {
             .map(|idx| self.domains[idx.0].clone())
             .collect();
         let idx = PredicateIdx(self.predicates.len());
-        let pred = Rc::new(Predicate::new(name, domains, self.values.len()));
-        self.values.resize(self.values.len() + pred.var_count, 0);
+        let pred = Rc::new(Predicate::new(name, domains, self.state.get_variables()));
+        self.state
+            .set_variables(self.state.get_variables() + pred.var_count);
         self.predicates.push(pred);
         idx
     }
@@ -480,15 +554,6 @@ impl Solver {
         panic!();
     }
 
-    fn get_value(&self, idx: LiteralIdx) -> i8 {
-        let value = self.values[idx.variable()];
-        if idx.negated() {
-            -value
-        } else {
-            value
-        }
-    }
-
     pub fn print(&self) {
         for dom in self.domains.iter() {
             println!("domain {} = {}", dom.name, dom.size);
@@ -499,10 +564,15 @@ impl Solver {
         for form in self.formulas.iter() {
             println!("formula {}", form);
         }
-        println!("variable count {}", self.values.len());
+        println!("variable count {}", self.state.get_variables());
         println!("clause count {}", self.cla_count);
-        let watcher = Watcher::new(&self.formulas[6], 1);
+
+        let watcher = WatcherPred {
+            negated: false,
+            predicate: self.predicates[0].clone(),
+            variables: vec![0, 1].into_boxed_slice(),
+            next: Box::new(WatcherLast),
+        };
         println!("{:?}", watcher);
-        println!("{}", watcher.check(&[0, 1, 1]));
     }
 }
