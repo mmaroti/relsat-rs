@@ -28,37 +28,38 @@ pub fn main() {
     let inv = sol.add_predicate("inv".into(), vec![set, set]);
     let mul = sol.add_predicate("mul".into(), vec![set, set, set]);
 
-    sol.add_formula(vec![(true, equ, vec![0, 0])]);
+    sol.add_formula(vec![(false, equ, vec![0, 0])]);
 
-    sol.add_formula(vec![(false, equ, vec![0, 1]), (true, equ, vec![1, 0])]);
+    sol.add_formula(vec![(true, equ, vec![0, 1]), (false, equ, vec![1, 0])]);
 
     sol.add_formula(vec![
-        (false, equ, vec![0, 1]),
-        (false, equ, vec![1, 2]),
-        (true, equ, vec![0, 2]),
+        (true, equ, vec![0, 1]),
+        (true, equ, vec![1, 2]),
+        (false, equ, vec![0, 2]),
     ]);
 
     sol.add_formula(vec![
-        (false, mul, vec![0, 1, 3]),
-        (false, mul, vec![3, 2, 4]),
-        (false, mul, vec![1, 2, 5]),
-        (true, mul, vec![0, 5, 4]),
+        (true, mul, vec![0, 1, 3]),
+        (true, mul, vec![3, 2, 4]),
+        (true, mul, vec![1, 2, 5]),
+        (false, mul, vec![0, 5, 4]),
     ]);
 
     sol.add_formula(vec![
-        (false, mul, vec![1, 2, 3]),
-        (false, mul, vec![0, 3, 4]),
-        (false, mul, vec![0, 1, 5]),
-        (true, mul, vec![5, 2, 4]),
+        (true, mul, vec![1, 2, 3]),
+        (true, mul, vec![0, 3, 4]),
+        (true, mul, vec![0, 1, 5]),
+        (false, mul, vec![5, 2, 4]),
     ]);
 
     sol.add_formula(vec![
-        (false, inv, vec![0, 1]),
-        (false, mul, vec![1, 0, 2]),
-        (true, one, vec![2]),
+        (true, inv, vec![0, 1]),
+        (true, mul, vec![1, 0, 2]),
+        (false, one, vec![2]),
     ]);
 
-    sol.add_formula(vec![(false, one, vec![0]), (true, mul, vec![0, 1, 1])]);
+    sol.add_formula(vec![(true, one, vec![0]), (false, mul, vec![0, 1, 1])]);
 
     sol.print();
+    sol.test();
 }

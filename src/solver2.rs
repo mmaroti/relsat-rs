@@ -26,6 +26,12 @@ struct Domain {
     name: String,
 }
 
+impl fmt::Display for Domain {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
 impl Domain {
     fn new(name: String, size: usize) -> Self {
         Self { name, size }
@@ -40,7 +46,10 @@ impl Domain {
     }
 }
 
-fn get_coords(domains: &[Rc<Domain>], mut offset: usize, coords: &mut [usize]) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Coord(usize);
+
+fn get_coords(domains: &[Rc<Domain>], mut offset: usize, coords: &mut [Coord]) {
     debug_assert_eq!(domains.len(), coords.len());
     for (size, coord) in domains
         .iter()
@@ -48,7 +57,7 @@ fn get_coords(domains: &[Rc<Domain>], mut offset: usize, coords: &mut [usize]) {
         .zip(coords.iter_mut())
         .rev()
     {
-        *coord = offset % size;
+        *coord = Coord(offset % size);
         offset /= size;
     }
     debug_assert_eq!(offset, 0);
@@ -56,14 +65,14 @@ fn get_coords(domains: &[Rc<Domain>], mut offset: usize, coords: &mut [usize]) {
 
 fn get_offset<I>(domains: &[Rc<Domain>], coords: I) -> usize
 where
-    I: ExactSizeIterator<Item = usize>,
+    I: ExactSizeIterator<Item = Coord>,
 {
     debug_assert_eq!(domains.len(), coords.len());
     let mut offset = 0;
     for (size, coord) in domains.iter().map(|dom| dom.size()).zip(coords) {
-        debug_assert!(coord < size);
+        debug_assert!(coord.0 < size);
         offset *= size;
-        offset += coord;
+        offset += coord.0;
     }
     offset
 }
@@ -92,15 +101,19 @@ impl Predicate {
         self.domains.len()
     }
 
-    fn get_coords(&self, offset: usize, coords: &mut [usize]) {
+    fn get_coords(&self, offset: usize, coords: &mut [Coord]) {
         get_coords(&self.domains, offset, coords);
     }
 
     fn get_offset<I>(&self, coords: I) -> usize
     where
-        I: ExactSizeIterator<Item = usize>,
+        I: ExactSizeIterator<Item = Coord>,
     {
         get_offset(&self.domains, coords)
+    }
+
+    fn ptr_eq(&self, other: &Predicate) -> bool {
+        ptr::eq(self, other)
     }
 }
 
@@ -154,15 +167,15 @@ impl ops::BitXor<bool> for LiteralIdx {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Literal<'a> {
     negated: bool,
     predicate: &'a Rc<Predicate>,
-    coords: Vec<usize>,
+    coords: Vec<Coord>,
 }
 
 impl<'a> Literal<'a> {
-    fn new(negated: bool, predicate: &'a Rc<Predicate>, coords: Vec<usize>) -> Self {
+    fn new(negated: bool, predicate: &'a Rc<Predicate>, coords: Vec<Coord>) -> Self {
         debug_assert_eq!(coords.len(), predicate.arity());
         Self {
             negated,
@@ -176,7 +189,7 @@ impl<'a> Literal<'a> {
         LiteralIdx::new(self.negated, var)
     }
 
-    fn destroy(self) -> Vec<usize> {
+    fn destroy(self) -> Vec<Coord> {
         self.coords
     }
 }
@@ -196,7 +209,7 @@ impl<'a> fmt::Display for Literal<'a> {
             } else {
                 write!(f, ",")?;
             }
-            write!(f, "{}", coord)?;
+            write!(f, "{}", coord.0)?;
         }
         write!(f, "]")
     }
@@ -221,7 +234,7 @@ impl AtomicFormula {
         }
     }
 
-    fn get_literal(&self, coords: &[usize]) -> LiteralIdx {
+    fn get_literal(&self, coords: &[Coord]) -> LiteralIdx {
         let offset = self
             .predicate
             .get_offset(self.variables.iter().map(|&i| coords[i]));
@@ -297,13 +310,13 @@ impl UniversalFormula {
         self.domains.len()
     }
 
-    fn get_coords(&self, offset: usize, coords: &mut [usize]) {
+    fn get_coords(&self, offset: usize, coords: &mut [Coord]) {
         get_coords(&self.domains, offset, coords);
     }
 
     fn get_offset<I>(&self, coords: I) -> usize
     where
-        I: ExactSizeIterator<Item = usize>,
+        I: ExactSizeIterator<Item = Coord>,
     {
         get_offset(&self.domains, coords)
     }
@@ -327,14 +340,14 @@ impl fmt::Display for UniversalFormula {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ClauseIdx(usize);
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Clause<'a> {
-    formula: &'a UniversalFormula,
-    coords: Vec<usize>,
+    formula: &'a Rc<UniversalFormula>,
+    coords: Vec<Coord>,
 }
 
 impl<'a> Clause<'a> {
-    fn new(formula: &'a UniversalFormula, coords: Vec<usize>) -> Self {
+    fn new(formula: &'a Rc<UniversalFormula>, coords: Vec<Coord>) -> Self {
         debug_assert_eq!(coords.len(), formula.arity());
         Self { formula, coords }
     }
@@ -358,14 +371,14 @@ impl<'a> Clause<'a> {
             .collect()
     }
 
-    fn destroy(self) -> Vec<usize> {
+    fn destroy(self) -> Vec<Coord> {
         self.coords
     }
 }
 
 impl<'a> fmt::Display for Clause<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut coords = vec![0; 0];
+        let mut coords = Vec::new();
         let mut first = true;
         for atom in self.formula.disjunction.iter() {
             if first {
@@ -385,113 +398,86 @@ impl<'a> fmt::Display for Clause<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Watcher2Prog {
-    ForAll(u32),
-    Pred(u32),
+enum WatcherProg {
+    Var(u32),
+    Atom(u32),
 }
 
-struct Watcher2 {
+#[derive(Debug)]
+struct Watcher {
     formula: Rc<UniversalFormula>,
-    program: Box<[Watcher2Prog]>,
+    program: Box<[WatcherProg]>,
 }
 
-impl Watcher2 {
-    fn has_false(&self, state: &State, coords: &mut [usize], step: usize) -> bool {
-        debug_assert!(step > 0);
+impl Watcher {
+    fn propagate(&self, state: &mut State, lit: &Literal) -> Option<Clause> {
+        if let Some(&WatcherProg::Atom(atom)) = self.program.first() {
+            let atom = &self.formula.disjunction[atom as usize];
+            debug_assert_eq!(atom.negated, lit.negated);
+            debug_assert!(atom.predicate.ptr_eq(lit.predicate));
+            debug_assert!(state.get_value(lit.idx()) < 0);
+
+            let mut coords = vec![Coord(usize::MAX); self.formula.arity()];
+            for (&var, &coord) in atom.variables.iter().zip(lit.coords.iter()) {
+                debug_assert_ne!(coord, Coord(usize::MAX));
+                if coords[var] != Coord(usize::MAX) {
+                    return None;
+                }
+                coords[var] = coord;
+            }
+            self.has_conflict(state, &mut coords, 1)
+        } else {
+            panic!();
+        }
+    }
+
+    fn has_conflict(&self, state: &mut State, coords: &mut [Coord], step: usize) -> Option<Clause> {
+        match self.program.get(step) {
+            None => Some(Clause::new(&self.formula, coords.into())),
+            Some(&WatcherProg::Atom(atom)) => {
+                let lit = self.formula.disjunction[atom as usize].get_literal(coords);
+                let val = state.get_value(lit);
+                if val < 0 {
+                    self.has_conflict(state, coords, step + 1)
+                } else {
+                    if val == 0 && self.has_false(state, coords, step + 1) {
+                        state.enqueue(lit);
+                    }
+                    None
+                }
+            }
+            Some(&WatcherProg::Var(var)) => {
+                let size = self.formula.domains[var as usize].size();
+                for coord in 0..size {
+                    coords[var as usize] = Coord(coord);
+                    self.has_conflict(state, coords, step + 1)?;
+                }
+                None
+            }
+        }
+    }
+
+    fn has_false(&self, state: &State, coords: &mut [Coord], step: usize) -> bool {
         match self.program.get(step) {
             None => true,
-            Some(&Watcher2Prog::Pred(pred)) => {
-                let atom = &self.formula.disjunction[pred as usize];
+            Some(&WatcherProg::Atom(atom)) => {
+                let atom = &self.formula.disjunction[atom as usize];
                 if state.get_value(atom.get_literal(coords)) < 0 {
                     self.has_false(state, coords, step + 1)
                 } else {
                     false
                 }
             }
-            Some(&Watcher2Prog::ForAll(var)) => {
+            Some(&WatcherProg::Var(var)) => {
                 let size = self.formula.domains[var as usize].size();
                 for coord in 0..size {
-                    coords[var as usize] = coord;
+                    coords[var as usize] = Coord(coord);
                     if self.has_false(state, coords, step + 1) {
                         return true;
                     }
                 }
                 false
             }
-        }
-    }
-}
-
-trait Watcher: fmt::Debug {
-    /// Searchers all combination of coordinates and unit propagates assuming
-    /// that all previous values were false.
-    fn propagate(&self, state: &mut State, coords: &mut Vec<usize>);
-
-    /// Returns true if for some combination of coordinates all subsequent
-    /// predicate becomes false.
-    fn has_false(&self, state: &State, coords: &mut Vec<usize>) -> bool;
-}
-
-struct WatcherLast;
-
-impl fmt::Debug for WatcherLast {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("WatcherLast").finish()
-    }
-}
-
-impl Watcher for WatcherLast {
-    fn propagate(&self, _state: &mut State, _coords: &mut Vec<usize>) {}
-
-    fn has_false(&self, _state: &State, _coords: &mut Vec<usize>) -> bool {
-        true
-    }
-}
-
-struct WatcherPred {
-    negated: bool,
-    predicate: Rc<Predicate>,
-    variables: Box<[usize]>,
-    next: Box<dyn Watcher>,
-}
-
-impl fmt::Debug for WatcherPred {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("WatcherPred")
-            .field("megated", &self.negated)
-            .field("predicate", &self.predicate)
-            .field("variables", &self.variables)
-            .field("next", &self.next)
-            .finish()
-    }
-}
-
-impl WatcherPred {
-    fn get_literal(&self, coords: &[usize]) -> LiteralIdx {
-        let offset = self
-            .predicate
-            .get_offset(self.variables.iter().map(|&i| coords[i]));
-        LiteralIdx::new(self.negated, offset)
-    }
-}
-
-impl Watcher for WatcherPred {
-    fn propagate(&self, state: &mut State, coords: &mut Vec<usize>) {
-        let lit = self.get_literal(coords);
-        let val = state.get_value(lit);
-        if val < 0 {
-            self.next.propagate(state, coords);
-        } else if val == 0 && self.next.has_false(state, coords) {
-            state.enqueue(lit);
-        }
-    }
-
-    fn has_false(&self, solver: &State, coords: &mut Vec<usize>) -> bool {
-        let val = solver.get_value(self.get_literal(coords));
-        if val < 0 {
-            self.next.has_false(solver, coords)
-        } else {
-            false
         }
     }
 }
@@ -510,17 +496,20 @@ impl State {
         self.values.resize(count, 0);
     }
 
-    fn get_value(&self, idx: LiteralIdx) -> i8 {
-        let value = self.values[idx.variable()];
-        if idx.negated() {
-            -value
+    fn get_value(&self, lit: LiteralIdx) -> i8 {
+        let val = self.values[lit.variable()];
+        if lit.negated() {
+            -val
         } else {
-            value
+            val
         }
     }
 
+    /// Sets the given literal to false and enqueues it for unit propagation.
     fn enqueue(&mut self, lit: LiteralIdx) {
-        assert!(self.get_value(lit) == 0);
+        let var = lit.variable();
+        assert_eq!(self.values[var], 0);
+        self.values[var] = if lit.negated() { 1 } else { -1 };
     }
 }
 
@@ -562,7 +551,7 @@ impl Solver {
     pub fn add_formula(&mut self, disjunction: Vec<(bool, PredicateIdx, Vec<usize>)>) {
         let disjunction = disjunction
             .into_iter()
-            .map(|(pos, pred, vars)| (!pos, self.predicates[pred.0].clone(), vars));
+            .map(|(neg, pred, vars)| (neg, self.predicates[pred.0].clone(), vars));
         let formula = Rc::new(UniversalFormula::new(disjunction, self.cla_count));
         self.cla_count += formula.cla_count;
         self.formulas.push(formula);
@@ -573,7 +562,7 @@ impl Solver {
         let mut offset = idx.variable();
         for predicate in self.predicates.iter() {
             if offset < predicate.var_count {
-                let mut coords = vec![0; predicate.arity()];
+                let mut coords = vec![Coord(0); predicate.arity()];
                 predicate.get_coords(offset, &mut coords);
                 let lit = Literal::new(negated, predicate, coords);
                 debug_assert_eq!(lit.idx(), idx);
@@ -588,7 +577,7 @@ impl Solver {
         let mut offset = idx.0;
         for formula in self.formulas.iter() {
             if offset < formula.cla_count {
-                let mut coords = vec![0; formula.arity()];
+                let mut coords = vec![Coord(0); formula.arity()];
                 formula.get_coords(offset, &mut coords);
                 let cla = Clause::new(formula, coords);
                 debug_assert_eq!(cla.idx(), idx);
@@ -601,7 +590,7 @@ impl Solver {
 
     pub fn print(&self) {
         for dom in self.domains.iter() {
-            println!("domain {} = {}", dom.name, dom.size);
+            println!("domain {} = {}", dom, dom.size);
         }
         for pred in self.predicates.iter() {
             println!("predicate {}", pred);
@@ -611,13 +600,19 @@ impl Solver {
         }
         println!("variable count {}", self.state.get_variables());
         println!("clause count {}", self.cla_count);
+    }
 
-        let watcher = WatcherPred {
-            negated: false,
-            predicate: self.predicates[0].clone(),
-            variables: vec![0, 1].into_boxed_slice(),
-            next: Box::new(WatcherLast),
+    pub fn test(&mut self) {
+        let watcher = Watcher {
+            formula: self.formulas[1].clone(),
+            program: vec![WatcherProg::Atom(0), WatcherProg::Atom(1)].into(),
         };
-        println!("{:?}", watcher);
+
+        let lit1 = Literal::new(true, &self.predicates[0], vec![Coord(1), Coord(2)]);
+        self.state.enqueue(lit1.idx());
+        let lit2 = Literal::new(true, &self.predicates[0], vec![Coord(2), Coord(1)]);
+        self.state.enqueue(lit2.idx() ^ true);
+
+        println!("{}", watcher.propagate(&mut self.state, &lit1).unwrap());
     }
 }
