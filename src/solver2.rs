@@ -398,20 +398,20 @@ impl<'a> fmt::Display for Clause<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum WatcherProg {
-    Var(u32),
+enum EvalStep {
+    Loop(u32),
     Atom(u32),
 }
 
 #[derive(Debug)]
-struct Watcher {
+struct Evaluator {
     formula: Rc<UniversalFormula>,
-    program: Box<[WatcherProg]>,
+    program: Box<[EvalStep]>,
 }
 
-impl Watcher {
-    fn propagate(&self, state: &mut State, lit: &Literal) -> Option<Clause> {
-        if let Some(&WatcherProg::Atom(atom)) = self.program.first() {
+impl Evaluator {
+    fn watch(&self, state: &mut State, lit: &Literal) -> Option<Clause> {
+        if let Some(&EvalStep::Atom(atom)) = self.program.first() {
             let atom = &self.formula.disjunction[atom as usize];
             debug_assert_eq!(atom.negated, lit.negated);
             debug_assert!(atom.predicate.ptr_eq(lit.predicate));
@@ -425,57 +425,69 @@ impl Watcher {
                 }
                 coords[var] = coord;
             }
-            self.has_conflict(state, &mut coords, 1)
+            if self.propagate(state, &mut coords, 1) {
+                Some(Clause::new(&self.formula, coords))
+            } else {
+                None
+            }
         } else {
             panic!();
         }
     }
 
-    fn has_conflict(&self, state: &mut State, coords: &mut [Coord], step: usize) -> Option<Clause> {
+    fn propagate(&self, state: &mut State, coords: &mut [Coord], step: usize) -> bool {
         match self.program.get(step) {
-            None => Some(Clause::new(&self.formula, coords.into())),
-            Some(&WatcherProg::Atom(atom)) => {
+            None => true,
+            Some(&EvalStep::Atom(atom)) => {
                 let lit = self.formula.disjunction[atom as usize].get_literal(coords);
                 let val = state.get_value(lit);
                 if val < 0 {
-                    self.has_conflict(state, coords, step + 1)
+                    self.propagate(state, coords, step + 1)
                 } else {
-                    if val == 0 && self.has_false(state, coords, step + 1) {
+                    if val == 0 && self.conflicting(state, coords, step + 1) {
                         state.enqueue(lit);
                     }
-                    None
+                    false
                 }
             }
-            Some(&WatcherProg::Var(var)) => {
+            Some(&EvalStep::Loop(var)) => {
                 let size = self.formula.domains[var as usize].size();
+                debug_assert_eq!(coords[var as usize], Coord(usize::MAX));
                 for coord in 0..size {
                     coords[var as usize] = Coord(coord);
-                    self.has_conflict(state, coords, step + 1)?;
+                    if self.propagate(state, coords, step + 1) {
+                        coords[var as usize] = Coord(usize::MAX);
+                        return true;
+                    }
                 }
-                None
+                coords[var as usize] = Coord(usize::MAX);
+                false
             }
         }
     }
 
-    fn has_false(&self, state: &State, coords: &mut [Coord], step: usize) -> bool {
+    fn conflicting(&self, state: &State, coords: &mut [Coord], step: usize) -> bool {
         match self.program.get(step) {
             None => true,
-            Some(&WatcherProg::Atom(atom)) => {
-                let atom = &self.formula.disjunction[atom as usize];
+            Some(&EvalStep::Atom(idx)) => {
+                let atom = &self.formula.disjunction[idx as usize];
                 if state.get_value(atom.get_literal(coords)) < 0 {
-                    self.has_false(state, coords, step + 1)
+                    self.conflicting(state, coords, step + 1)
                 } else {
                     false
                 }
             }
-            Some(&WatcherProg::Var(var)) => {
+            Some(&EvalStep::Loop(var)) => {
                 let size = self.formula.domains[var as usize].size();
+                debug_assert_eq!(coords[var as usize], Coord(usize::MAX));
                 for coord in 0..size {
                     coords[var as usize] = Coord(coord);
-                    if self.has_false(state, coords, step + 1) {
+                    if self.conflicting(state, coords, step + 1) {
+                        coords[var as usize] = Coord(usize::MAX);
                         return true;
                     }
                 }
+                coords[var as usize] = Coord(usize::MAX);
                 false
             }
         }
@@ -505,11 +517,11 @@ impl State {
         }
     }
 
-    /// Sets the given literal to false and enqueues it for unit propagation.
+    /// Sets the given literal to true and enqueues it for unit propagation.
     fn enqueue(&mut self, lit: LiteralIdx) {
         let var = lit.variable();
         assert_eq!(self.values[var], 0);
-        self.values[var] = if lit.negated() { 1 } else { -1 };
+        self.values[var] = if lit.negated() { -1 } else { 1 };
     }
 }
 
@@ -603,16 +615,18 @@ impl Solver {
     }
 
     pub fn test(&mut self) {
-        let watcher = Watcher {
+        let watcher = Evaluator {
             formula: self.formulas[1].clone(),
-            program: vec![WatcherProg::Atom(0), WatcherProg::Atom(1)].into(),
+            program: vec![EvalStep::Atom(0), EvalStep::Atom(1)].into(),
         };
 
         let lit1 = Literal::new(true, &self.predicates[0], vec![Coord(1), Coord(2)]);
-        self.state.enqueue(lit1.idx());
-        let lit2 = Literal::new(true, &self.predicates[0], vec![Coord(2), Coord(1)]);
-        self.state.enqueue(lit2.idx() ^ true);
+        self.state.enqueue(!lit1.idx());
+        let lit2 = Literal::new(false, &self.predicates[0], vec![Coord(2), Coord(1)]);
+        // self.state.enqueue(!lit2.idx());
 
-        println!("{}", watcher.propagate(&mut self.state, &lit1).unwrap());
+        println!("{:?}", watcher.watch(&mut self.state, &lit1));
+        println!("{}", self.state.get_value(lit1.idx()));
+        println!("{}", self.state.get_value(lit2.idx()));
     }
 }
