@@ -20,7 +20,6 @@
 mod bitops;
 mod buffer;
 mod main1;
-mod main2;
 mod shape;
 mod solver1;
 mod solver2;
@@ -28,5 +27,5 @@ mod theory;
 mod tokenizer;
 
 fn main() {
-    main2::main();
+    solver2::main();
 }
