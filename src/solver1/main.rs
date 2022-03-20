@@ -17,7 +17,7 @@
 
 #![allow(dead_code)]
 
-use super::solver1::*;
+use super::solver::*;
 
 pub fn main() {
     let mut sol: Solver = Default::default();
