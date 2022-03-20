@@ -15,12 +15,14 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+mod boolean;
 mod domain;
 mod eval1;
 mod formula;
 mod predicate;
 mod solver;
 
+use boolean::{Bool, FALSE, TRUE, UNDEF};
 use domain::{get_coords, get_offset, Coord, Domain};
 use eval1::{EvalStep, Evaluator};
 use formula::{Clause, ClauseIdx, UniversalFormula};

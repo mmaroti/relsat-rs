@@ -37,7 +37,7 @@ impl Evaluator {
             let atom = self.formula.disjunction(atom as usize);
             debug_assert_eq!(atom.negated(), lit.negated());
             debug_assert!(atom.predicate().ptr_eq(lit.predicate()));
-            debug_assert!(state.get_value(lit.idx()) < 0);
+            debug_assert!(state.get_value(lit.idx()).is_false());
 
             let mut coords = vec![Coord(usize::MAX); self.formula.arity()];
             for (&var, &coord) in atom.variables().iter().zip(lit.coords()) {
@@ -63,10 +63,10 @@ impl Evaluator {
             Some(&EvalStep::Atom(atom)) => {
                 let lit = self.formula.disjunction(atom as usize).get_literal(coords);
                 let val = state.get_value(lit);
-                if val < 0 {
+                if val.is_false() {
                     self.propagate(state, coords, step + 1)
                 } else {
-                    if val == 0 && self.conflicting(state, coords, step + 1) {
+                    if val.is_undef() && self.conflicting(state, coords, step + 1) {
                         state.enqueue(lit);
                     }
                     false
@@ -93,7 +93,7 @@ impl Evaluator {
             None => true,
             Some(&EvalStep::Atom(idx)) => {
                 let atom = self.formula.disjunction(idx as usize);
-                if state.get_value(atom.get_literal(coords)) < 0 {
+                if state.get_value(atom.get_literal(coords)).is_false() {
                     self.conflicting(state, coords, step + 1)
                 } else {
                     false

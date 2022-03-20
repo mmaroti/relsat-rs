@@ -16,15 +16,15 @@
 */
 
 use super::{
-    Clause, ClauseIdx, Coord, Domain, EvalStep, Evaluator, Literal, LiteralIdx, Predicate,
-    UniversalFormula,
+    Bool, Clause, ClauseIdx, Coord, Domain, EvalStep, Evaluator, Literal, LiteralIdx, Predicate,
+    UniversalFormula, FALSE, TRUE, UNDEF,
 };
 
 use std::rc::Rc;
 
 #[derive(Debug, Default)]
 pub struct State {
-    values: Vec<i8>,
+    values: Vec<Bool>,
 }
 
 impl State {
@@ -33,23 +33,19 @@ impl State {
     }
 
     pub fn set_variables(&mut self, count: usize) {
-        self.values.resize(count, 0);
+        self.values.resize(count, UNDEF);
     }
 
-    pub fn get_value(&self, lit: LiteralIdx) -> i8 {
+    pub fn get_value(&self, lit: LiteralIdx) -> Bool {
         let val = self.values[lit.variable()];
-        if lit.negated() {
-            -val
-        } else {
-            val
-        }
+        val ^ lit.negated()
     }
 
     /// Sets the given literal to true and enqueues it for unit propagation.
     pub fn enqueue(&mut self, lit: LiteralIdx) {
         let var = lit.variable();
-        assert_eq!(self.values[var], 0);
-        self.values[var] = if lit.negated() { -1 } else { 1 };
+        assert!(self.values[var].is_undef());
+        self.values[var] = if lit.negated() { FALSE } else { TRUE };
     }
 }
 
