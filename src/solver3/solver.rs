@@ -15,9 +15,9 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-use crate::solver1::bitops::*;
-use crate::solver1::buffer::Buffer2;
-use crate::solver1::shape::Shape;
+use super::bitops::*;
+use super::buffer::Buffer2;
+use super::shape::Shape;
 
 #[derive(Debug)]
 struct Domain {

@@ -15,6 +15,7 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+use std::cmp;
 use std::fmt;
 use std::ops;
 
@@ -80,12 +81,10 @@ impl fmt::Display for Bool {
         write!(
             f,
             "{}",
-            if self.0 > 0 {
-                "true"
-            } else if self.0 < 0 {
-                "false"
-            } else {
-                "undef"
+            match self.0.cmp(&0) {
+                cmp::Ordering::Greater => "true",
+                cmp::Ordering::Less => "false",
+                cmp::Ordering::Equal => "undef",
             }
         )
     }
