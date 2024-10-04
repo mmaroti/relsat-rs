@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2019-2021, Miklos Maroti
+* Copyright (C) 2019-2022, Miklos Maroti
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -15,9 +15,21 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#![allow(dead_code)]
+mod boolean;
+mod domain;
+mod eval1;
+mod formula;
+mod predicate;
+mod solver;
 
-use super::solver2::*;
+use boolean::{Bool, FALSE, TRUE, UNDEF};
+use domain::{get_coords, get_offset, Coord, Domain};
+use eval1::{EvalStep, Evaluator};
+use formula::{Clause, ClauseIdx, UniversalFormula};
+use predicate::{Literal, LiteralIdx, Predicate};
+use solver::State;
+
+pub use solver::Solver;
 
 pub fn main() {
     let mut sol: Solver = Default::default();
