@@ -24,6 +24,7 @@ mod main2;
 mod shape;
 mod solver1;
 mod solver2;
+mod solver3;
 mod theory;
 mod tokenizer;
 

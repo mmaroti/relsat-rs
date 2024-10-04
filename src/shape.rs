@@ -114,7 +114,7 @@ impl ShapeView {
     pub fn new(shape: &Shape) -> Self {
         let mut strides: Box<[(usize, usize)]> = shape.lengths.iter().map(|&d| (d, 0)).collect();
         let mut s = 1;
-        for mut e in strides.iter_mut().rev() {
+        for e in strides.iter_mut().rev() {
             e.1 = s;
             s *= e.0;
         }
