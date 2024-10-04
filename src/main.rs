@@ -22,5 +22,6 @@ mod solver2;
 mod solver3;
 
 fn main() {
-    solver2::main();
+    // solver2::main();
+    solver3::main();
 }

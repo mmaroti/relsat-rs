@@ -21,22 +21,22 @@ use super::shape::Shape;
 
 #[derive(Debug)]
 struct Domain {
-    size: usize,
     name: String,
+    size: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Dom(usize);
 
 #[derive(Debug)]
-struct Variable {
-    shape: Shape,
+struct Relation {
     name: String,
+    shape: Shape,
     domains: Box<[Dom]>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Var(usize);
+pub struct Rel(usize);
 
 #[derive(Debug, Default)]
 struct Step {
@@ -49,7 +49,7 @@ pub struct Solver {
     assignment: Buffer2,
     steps: Vec<Step>,
     domains: Vec<Domain>,
-    variables: Vec<Variable>,
+    relations: Vec<Relation>,
 }
 
 impl Solver {
@@ -60,10 +60,10 @@ impl Solver {
         Dom(dom)
     }
 
-    pub fn add_variable(&mut self, name: String, domains: Vec<Dom>) -> Var {
-        assert!(self.variables.iter().all(|var| var.name != name));
+    pub fn add_relation(&mut self, name: String, domains: Vec<Dom>) -> Rel {
+        assert!(self.relations.iter().all(|var| var.name != name));
 
-        let var = self.variables.len();
+        let rel = self.relations.len();
 
         let shape = Shape::new(
             domains.iter().map(|dom| self.domains[dom.0].size).collect(),
@@ -72,13 +72,13 @@ impl Solver {
         self.assignment.append(shape.volume(), BOOL_UNDEF);
 
         let domains = domains.into_boxed_slice();
-        self.variables.push(Variable {
-            shape,
+        self.relations.push(Relation {
             name,
+            shape,
             domains,
         });
 
-        Var(var)
+        Rel(rel)
     }
 
     fn assign(&mut self, pos: usize, sign: bool, reason: Vec<usize>) {
@@ -88,9 +88,26 @@ impl Solver {
         self.steps.push(Step { pos, reason });
     }
 
-    pub fn set_value(&mut self, sign: bool, var: Var, coordinates: &[usize]) {
-        let var = &self.variables[var.0];
+    pub fn set_value(&mut self, sign: bool, rel: Rel, coordinates: &[usize]) {
+        let var = &self.relations[rel.0];
         let pos = var.shape.position(coordinates.iter());
         self.assign(pos, sign, vec![]);
+    }
+
+    pub fn print(&self) {
+        for dom in self.domains.iter() {
+            println!("domain {} = {}", dom.name, dom.size);
+        }
+        for rel in self.relations.iter() {
+            print!("relation {} = [", rel.name);
+            for (idx, &dom) in rel.domains.iter().enumerate() {
+                if idx != 0 {
+                    print!(", ")
+                }
+                let dom = &self.domains[dom.0];
+                print!("{}", dom.name)
+            }
+            println!("]");
+        }
     }
 }

@@ -18,4 +18,16 @@
 use crate::solver1::bitops;
 use crate::solver1::buffer;
 use crate::solver1::shape;
+
 mod solver;
+
+pub fn main() {
+    let mut sol: solver::Solver = Default::default();
+
+    let set = sol.add_domain("set".into(), 7);
+    let _one = sol.add_relation("one".into(), vec![set]);
+    let _inv = sol.add_relation("inv".into(), vec![set, set]);
+    let _mul = sol.add_relation("mul".into(), vec![set, set, set]);
+
+    sol.print();
+}
