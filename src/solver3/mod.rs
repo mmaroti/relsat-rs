@@ -17,8 +17,8 @@
 
 use crate::solver1::bitops;
 use crate::solver1::buffer;
-use crate::solver1::shape;
 
+mod shape;
 mod solver;
 
 pub fn main() {

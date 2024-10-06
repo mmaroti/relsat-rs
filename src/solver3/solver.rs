@@ -66,7 +66,7 @@ impl Solver {
         let rel = self.relations.len();
 
         let shape = Shape::new(
-            domains.iter().map(|dom| self.domains[dom.0].size).collect(),
+            domains.iter().map(|dom| self.domains[dom.0].size),
             self.assignment.len(),
         );
         self.assignment.append(shape.volume(), BOOL_UNDEF);
@@ -90,7 +90,7 @@ impl Solver {
 
     pub fn set_value(&mut self, sign: bool, rel: Rel, coordinates: &[usize]) {
         let var = &self.relations[rel.0];
-        let pos = var.shape.position(coordinates.iter());
+        let pos = var.shape.position(coordinates.iter().cloned());
         self.assign(pos, sign, vec![]);
     }
 
