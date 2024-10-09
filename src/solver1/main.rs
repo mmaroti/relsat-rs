@@ -239,3 +239,43 @@ pub fn main() {
 
     sol.search_all();
 }
+
+pub fn main2() {
+    let mut sol: Solver = Default::default();
+    let set = sol.add_domain("set", 7);
+    // let _one = sol.add_variable("one", vec![&set]);
+    // let _inv = sol.add_variable("inv", vec![&set, &set]);
+    let mul = sol.add_variable("mul", vec![&set, &set, &set]);
+
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 3]),
+        (false, &mul, vec![3, 2, 4]),
+        (false, &mul, vec![1, 2, 5]),
+        (true, &mul, vec![0, 5, 4]),
+    ]);
+
+    // trivial consequences but not unit propagated
+
+    // unification of 013 and 324
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 0]),
+        (false, &mul, vec![1, 1, 2]),
+        (true, &mul, vec![0, 2, 0]),
+    ]);
+
+    // unification of 013 and 125
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 0, 1]),
+        (false, &mul, vec![1, 0, 2]),
+        (true, &mul, vec![0, 1, 2]),
+    ]);
+
+    // unification of 324 and 125
+    sol.add_clause(vec![
+        (false, &mul, vec![0, 1, 1]),
+        (false, &mul, vec![1, 2, 3]),
+        (true, &mul, vec![0, 3, 3]),
+    ]);
+
+    sol.search_all();
+}

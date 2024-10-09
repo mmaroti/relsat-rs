@@ -17,7 +17,7 @@
 
 pub mod bitops;
 pub mod buffer;
-mod main;
+pub mod main;
 pub mod shape;
 mod solver;
 mod theory;
