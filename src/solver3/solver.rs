@@ -25,7 +25,7 @@ struct Domain {
     size: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Dom(usize);
 
 #[derive(Debug)]
@@ -37,6 +37,12 @@ struct Relation {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rel(usize);
+
+struct Literal {
+    sign: bool,
+    relation: Rel,
+    variables: Box<[usize]>,
+}
 
 #[derive(Debug, Default)]
 struct Step {
@@ -81,6 +87,39 @@ impl Solver {
         Rel(rel)
     }
 
+    pub fn add_clause(&mut self, literals: Vec<(bool, Rel, Vec<usize>)>) {
+        let mut domains: Vec<Option<Dom>> = Default::default();
+        for (_, rel, vars) in literals.iter() {
+            let rel = &self.relations[rel.0];
+            assert_eq!(rel.domains.len(), vars.len());
+            for (pos, &var) in vars.iter().enumerate() {
+                if domains.len() <= var {
+                    domains.resize(var + 1, None);
+                }
+                let dom1 = rel.domains[pos];
+                let dom2 = &mut domains[var];
+                if dom2.is_none() {
+                    *dom2 = Some(dom1);
+                } else {
+                    assert_eq!(dom1, dom2.unwrap());
+                }
+            }
+        }
+        let domains: Vec<Dom> = domains.into_iter().map(|d| d.unwrap()).collect();
+
+        let literals: Vec<Literal> = literals
+            .into_iter()
+            .map(|(sign, rel, vars)| Literal {
+                relation: rel,
+                sign,
+                variables: vars.into_boxed_slice(),
+            })
+            .collect();
+
+        // let cla = Clause::new(shape, domains, literals);
+        // self.clauses.push(cla);
+    }
+
     fn assign(&mut self, pos: usize, sign: bool, reason: Vec<usize>) {
         assert!(self.assignment.get(pos) == BOOL_UNDEF);
         self.assignment
@@ -89,8 +128,8 @@ impl Solver {
     }
 
     pub fn set_value(&mut self, sign: bool, rel: Rel, coordinates: &[usize]) {
-        let var = &self.relations[rel.0];
-        let pos = var.shape.position(coordinates.iter().cloned());
+        let shape = &self.relations[rel.0].shape;
+        let pos = shape.position(coordinates.iter().cloned());
         self.assign(pos, sign, vec![]);
     }
 

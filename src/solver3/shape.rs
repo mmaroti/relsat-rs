@@ -72,21 +72,6 @@ impl Shape {
         volume
     }
 
-    /// Returns the position in a flat array of the element at the given
-    /// indices. The number of indices must match the rank of the tensor.
-    pub fn position<ITER>(&self, indices: ITER) -> usize
-    where
-        ITER: ExactSizeIterator<Item = usize>,
-    {
-        debug_assert_eq!(indices.len(), self.dimension());
-        let mut pos = self.offset;
-        for (index, side) in indices.zip(self.axes.iter()) {
-            debug_assert!(index < side.length);
-            pos += index * side.stride;
-        }
-        pos
-    }
-
     /// Permutes the axes of the given shape. The map must be of size
     /// dimension. The old coordinate `i` will be placed at the new
     /// coordinate `map[i]`.
@@ -145,44 +130,24 @@ impl Shape {
         }
     }
 
-    /// Returns another view whose positions are the same but might have
-    /// smaller dimension because some axes could be merged.
-    pub fn simplify(&self) -> Self {
-        let mut axes = self.axes.clone().into_vec();
-
-        let mut tail = 0;
-        let mut head = 1;
-        while head < axes.len() {
-            debug_assert!(tail < head);
-            if axes[head].length == 0 {
-                tail = 0;
-                axes[0] = Axis {
-                    length: 0,
-                    stride: 0,
-                };
-                break;
-            }
-            let s = axes[head].length * axes[head].stride;
-            if s == axes[tail].stride {
-                axes[tail].length *= axes[head].length;
-                axes[tail].stride = axes[head].stride;
-            } else {
-                tail += 1;
-                axes[tail] = axes[head];
-            }
-            head += 1;
+    /// Returns the position in the flat array of the element at the given
+    /// indices. The number of indices must match the dimension of the tensor.
+    pub fn position<ITER>(&self, indices: ITER) -> usize
+    where
+        ITER: ExactSizeIterator<Item = usize>,
+    {
+        debug_assert_eq!(indices.len(), self.dimension());
+        let mut pos = self.offset;
+        for (index, side) in indices.zip(self.axes.iter()) {
+            debug_assert!(index < side.length);
+            pos += index * side.stride;
         }
-
-        axes.truncate(tail + 1);
-        let axes = axes.into_boxed_slice();
-        let offset = self.offset;
-        Self { axes, offset }
+        pos
     }
 
     /// Returns an iterator through all valid positions, volume many in total.
-    /// You might want to call `simplify` before to speed up the iteration.
-    pub fn positions(&self) -> ShapeIter {
-        ShapeIter::new(self)
+    pub fn positions(&self) -> Iter {
+        Iter::new(self)
     }
 }
 
@@ -196,13 +161,42 @@ struct Axis2 {
 
 /// ShapeIter iterator that returns all valid positions, size many in total.
 #[derive(Debug, Clone)]
-pub struct ShapeIter2 {
+pub struct Iter {
     length: usize,
     position: usize,
     axes: Vec<Axis2>,
 }
 
-impl Iterator for ShapeIter2 {
+impl Iter {
+    /// Creates a new iterator for the given shape.
+    fn new(shape: &Shape) -> Self {
+        let mut axes: Vec<Axis2> = Vec::with_capacity(shape.axes.len());
+        let mut volume = 1;
+        for axis in shape.axes.iter() {
+            volume *= axis.length;
+            if let Some(axis2) = axes.last_mut() {
+                if axis2.product == axis.stride {
+                    axis2.length *= axis.length;
+                    axis2.product *= axis.length;
+                    continue;
+                }
+            }
+            axes.push(Axis2 {
+                stride: axis.stride,
+                length: axis.length,
+                index: 0,
+                product: axis.stride * axis.length,
+            });
+        }
+        Iter {
+            length: volume,
+            position: shape.offset,
+            axes,
+        }
+    }
+}
+
+impl Iterator for Iter {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -226,73 +220,9 @@ impl Iterator for ShapeIter2 {
     }
 }
 
-impl ExactSizeIterator for ShapeIter2 {
+impl ExactSizeIterator for Iter {
     fn len(&self) -> usize {
         self.length
-    }
-}
-
-/// ShapeIter iterator that returns all valid positions, size many in total.
-#[derive(Debug)]
-pub struct ShapeIter {
-    index: usize,
-    entries: Box<[(usize, usize, usize)]>, // coord, dim, stride
-    done: bool,
-}
-
-impl ShapeIter {
-    /// Creates a new iterator for the given shape.
-    fn new(shape: &Shape) -> Self {
-        let mut done = false;
-        let entries = shape
-            .axes
-            .iter()
-            .map(|a| {
-                done |= a.length == 0;
-                (0, a.length, a.stride)
-            })
-            .collect();
-
-        let index = shape.offset;
-        Self {
-            index,
-            entries,
-            done,
-        }
-    }
-
-    /// Resets the iterator to the first element.
-    pub fn reset(&mut self) {
-        self.done = false;
-        for e in self.entries.iter_mut() {
-            self.done |= e.1 == 0;
-            self.index -= e.0 * e.2;
-            e.0 = 0;
-        }
-    }
-}
-
-impl Iterator for ShapeIter {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.done {
-            None
-        } else {
-            let index = self.index;
-            for e in self.entries.iter_mut() {
-                self.index += e.2;
-                e.0 += 1;
-                if e.0 >= e.1 {
-                    self.index -= e.0 * e.2;
-                    e.0 = 0;
-                } else {
-                    return Some(index);
-                }
-            }
-            self.done = true;
-            Some(index)
-        }
     }
 }
 
@@ -308,15 +238,24 @@ mod tests {
         assert_eq!(shape.length(0), 2);
         assert_eq!(shape.length(1), 3);
         assert_eq!(shape.length(2), 2);
+        assert_eq!(shape.positions().axes.len(), 1);
         let pos: Vec<usize> = shape.positions().collect();
         assert_eq!(pos, vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+        assert_eq!(shape.position([1, 2, 1].into_iter()), 11);
 
-        let view = shape.permute(&[2, 1, 0]);
+        let view = shape.permute(&[2, 0, 1]);
+        assert_eq!(view.positions().axes.len(), 2);
         let pos: Vec<usize> = view.positions().collect();
-        assert_eq!(pos, vec![0, 6, 2, 8, 4, 10, 1, 7, 3, 9, 5, 11]);
+        assert_eq!(pos, vec![0, 2, 4, 6, 8, 10, 1, 3, 5, 7, 9, 11]);
 
-        let view = shape.polymer(vec![3, 2].into_iter(), &[1, 0, 1]);
+        let view = shape.swap(0, 1);
+        assert_eq!(view.positions().axes.len(), 3);
         let pos: Vec<usize> = view.positions().collect();
-        assert_eq!(pos, vec![0, 2, 4, 7, 9, 11]);
+        assert_eq!(pos, vec![0, 2, 4, 1, 3, 5, 6, 8, 10, 7, 9, 11]);
+
+        let view = shape.polymer(vec![2, 3, 2].into_iter(), &[2, 1, 2]);
+        assert_eq!(view.positions().axes.len(), 3);
+        let pos: Vec<usize> = view.positions().collect();
+        assert_eq!(pos, vec![0, 0, 2, 2, 4, 4, 7, 7, 9, 9, 11, 11]);
     }
 }
