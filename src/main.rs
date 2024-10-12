@@ -22,7 +22,7 @@ mod solver2;
 mod solver3;
 
 fn main() {
-    solver1::main::main2();
+    // solver1::main::main2();
     // solver2::main();
-    // solver3::main();
+    solver3::main();
 }

@@ -27,7 +27,14 @@ pub fn main() {
     let set = sol.add_domain("set".into(), 7);
     let _one = sol.add_relation("one".into(), vec![set]);
     let _inv = sol.add_relation("inv".into(), vec![set, set]);
-    let _mul = sol.add_relation("mul".into(), vec![set, set, set]);
+    let mul = sol.add_relation("mul".into(), vec![set, set, set]);
+
+    sol.add_clause(vec![
+        (false, mul, vec![0, 1, 3]),
+        (false, mul, vec![3, 2, 4]),
+        (false, mul, vec![1, 2, 5]),
+        (true, mul, vec![0, 5, 4]),
+    ]);
 
     sol.print();
 }

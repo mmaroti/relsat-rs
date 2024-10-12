@@ -22,7 +22,7 @@ use std::ops::Range;
 use super::bitops::{Bit1, Bit2, Op222};
 
 /// A vector for holding single bits represented as 0 or 1.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Buffer1 {
     data: Vec<u32>,
     len: usize,
@@ -106,7 +106,7 @@ impl Buffer1 {
 }
 
 /// A vector for holding double bits represented as 0, 1, 2 or 3.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Buffer2 {
     data: Vec<u32>,
     len: usize,

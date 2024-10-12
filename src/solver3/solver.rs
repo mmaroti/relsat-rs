@@ -19,6 +19,8 @@ use super::bitops::*;
 use super::buffer::Buffer2;
 use super::shape::Shape;
 
+struct State {}
+
 #[derive(Debug)]
 struct Domain {
     name: String,
@@ -35,16 +37,26 @@ struct Relation {
     domains: Box<[Dom]>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Rel(usize);
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Var(pub usize);
+
+#[derive(Debug)]
 struct Literal {
     sign: bool,
     relation: Rel,
-    variables: Box<[usize]>,
+    variables: Box<[Var]>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
+struct Clause {
+    literals: Box<[Literal]>,
+    domains: Box<[Dom]>,
+}
+
+#[derive(Debug)]
 struct Step {
     pos: usize,
     reason: Vec<usize>,
@@ -56,6 +68,7 @@ pub struct Solver {
     steps: Vec<Step>,
     domains: Vec<Domain>,
     relations: Vec<Relation>,
+    clauses: Vec<Clause>,
 }
 
 impl Solver {
@@ -88,36 +101,38 @@ impl Solver {
     }
 
     pub fn add_clause(&mut self, literals: Vec<(bool, Rel, Vec<usize>)>) {
-        let mut domains: Vec<Option<Dom>> = Default::default();
+        let mut domains: Vec<Dom> = Default::default();
         for (_, rel, vars) in literals.iter() {
             let rel = &self.relations[rel.0];
             assert_eq!(rel.domains.len(), vars.len());
             for (pos, &var) in vars.iter().enumerate() {
                 if domains.len() <= var {
-                    domains.resize(var + 1, None);
+                    domains.resize(var + 1, Dom(usize::MAX));
                 }
                 let dom1 = rel.domains[pos];
                 let dom2 = &mut domains[var];
-                if dom2.is_none() {
-                    *dom2 = Some(dom1);
-                } else {
-                    assert_eq!(dom1, dom2.unwrap());
-                }
+                debug_assert!(*dom2 == dom1 || *dom2 == Dom(usize::MAX));
+                *dom2 = dom1;
             }
         }
-        let domains: Vec<Dom> = domains.into_iter().map(|d| d.unwrap()).collect();
 
         let literals: Vec<Literal> = literals
             .into_iter()
-            .map(|(sign, rel, vars)| Literal {
-                relation: rel,
-                sign,
-                variables: vars.into_boxed_slice(),
+            .map(|(sign, rel, vars)| {
+                let vars: Vec<Var> = vars.into_iter().map(Var).collect();
+                Literal {
+                    relation: rel,
+                    sign,
+                    variables: vars.into_boxed_slice(),
+                }
             })
             .collect();
 
-        // let cla = Clause::new(shape, domains, literals);
-        // self.clauses.push(cla);
+        let clause = Clause {
+            domains: domains.into_boxed_slice(),
+            literals: literals.into_boxed_slice(),
+        };
+        self.clauses.push(clause);
     }
 
     fn assign(&mut self, pos: usize, sign: bool, reason: Vec<usize>) {
@@ -138,15 +153,62 @@ impl Solver {
             println!("domain {} = {}", dom.name, dom.size);
         }
         for rel in self.relations.iter() {
-            print!("relation {} = [", rel.name);
-            for (idx, &dom) in rel.domains.iter().enumerate() {
-                if idx != 0 {
-                    print!(", ")
-                }
-                let dom = &self.domains[dom.0];
-                print!("{}", dom.name)
-            }
-            println!("]");
+            println!("relation {} = {}", rel.name, Member(self, &*rel.domains));
         }
+        for cla in self.clauses.iter() {
+            println!("clause {}", Member(self, cla));
+        }
+    }
+}
+
+struct Member<'a, T>(&'a Solver, T);
+
+impl std::fmt::Display for Member<'_, &[Dom]> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "[")?;
+        let mut first = true;
+        for &dom in self.1.iter() {
+            if first {
+                first = false;
+            } else {
+                write!(f, ",")?;
+            }
+            let dom = &self.0.domains[dom.0];
+            write!(f, "{}", dom.name)?;
+        }
+        write!(f, "]")
+    }
+}
+
+impl std::fmt::Display for Member<'_, &Literal> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", if self.1.sign { '+' } else { '-' })?;
+        let rel = &self.0.relations[self.1.relation.0];
+        write!(f, "{}(", rel.name)?;
+        let mut first = true;
+        for &var in self.1.variables.iter() {
+            if first {
+                first = false;
+            } else {
+                write!(f, ",")?;
+            }
+            write!(f, "x{}", var.0)?;
+        }
+        write!(f, ")")
+    }
+}
+
+impl std::fmt::Display for Member<'_, &Clause> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut first = true;
+        for lit in self.1.literals.iter() {
+            if first {
+                first = false;
+            } else {
+                write!(f, " ")?;
+            }
+            write!(f, "{}", Member(self.0, lit))?;
+        }
+        Ok(())
     }
 }
