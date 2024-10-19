@@ -19,8 +19,6 @@ use super::bitops::*;
 use super::buffer::Buffer2;
 use super::shape::Shape;
 
-struct State {}
-
 #[derive(Debug)]
 struct Domain {
     name: String,
@@ -84,13 +82,13 @@ impl Solver {
 
         let rel = self.relations.len();
 
+        let domains = domains.into_boxed_slice();
         let shape = Shape::new(
             domains.iter().map(|dom| self.domains[dom.0].size),
             self.assignment.len(),
         );
         self.assignment.append(shape.volume(), BOOL_UNDEF);
 
-        let domains = domains.into_boxed_slice();
         self.relations.push(Relation {
             name,
             shape,
@@ -135,13 +133,6 @@ impl Solver {
         self.clauses.push(clause);
     }
 
-    fn assign(&mut self, pos: usize, sign: bool, reason: Vec<usize>) {
-        assert!(self.assignment.get(pos) == BOOL_UNDEF);
-        self.assignment
-            .set(pos, if sign { BOOL_TRUE } else { BOOL_FALSE });
-        self.steps.push(Step { pos, reason });
-    }
-
     pub fn set_value(&mut self, sign: bool, rel: Rel, coordinates: &[usize]) {
         let shape = &self.relations[rel.0].shape;
         let pos = shape.position(coordinates.iter().cloned());
@@ -158,6 +149,35 @@ impl Solver {
         for cla in self.clauses.iter() {
             println!("clause {}", Member(self, cla));
         }
+    }
+
+    pub fn print_relation(&self, rel: Rel) {
+        let rel = &self.relations[rel.0];
+        let shape = &rel.shape;
+
+        let mut cor = vec![0; shape.dimension()];
+        'outer: loop {
+            let pos = shape.position(cor.iter().cloned());
+            let val = BOOL_FORMAT[self.assignment.get(pos).idx() as usize];
+            println!("assign {}{} = {}", rel.name, Tuple(&cor), val);
+
+            for (i, c) in cor.iter_mut().enumerate().rev() {
+                *c += 1;
+                if *c >= shape.length(i) {
+                    *c = 0;
+                } else {
+                    continue 'outer;
+                }
+            }
+            break;
+        }
+    }
+
+    fn assign(&mut self, pos: usize, sign: bool, reason: Vec<usize>) {
+        assert!(self.assignment.get(pos) == BOOL_UNDEF);
+        self.assignment
+            .set(pos, if sign { BOOL_TRUE } else { BOOL_FALSE });
+        self.steps.push(Step { pos, reason });
     }
 }
 
@@ -210,5 +230,26 @@ impl std::fmt::Display for Member<'_, &Clause> {
             write!(f, "{}", Member(self.0, lit))?;
         }
         Ok(())
+    }
+}
+
+struct Tuple<'a, T>(&'a [T]);
+
+impl<T> std::fmt::Display for Tuple<'_, T>
+where
+    T: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "(")?;
+        let mut first = true;
+        for val in self.0 {
+            if first {
+                first = false;
+            } else {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", val)?;
+        }
+        write!(f, ")")
     }
 }

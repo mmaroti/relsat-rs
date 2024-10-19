@@ -15,28 +15,29 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-use crate::solver1::bitops;
-use crate::solver1::buffer;
+use super::buffer::Buffer2;
+use super::shape::Shape;
 
-mod contraction;
-mod shape;
-mod solver;
+#[derive(Debug, Clone)]
+struct Axis<const LEN: usize> {
+    index: usize,
+    length: usize,
+    strides: [(usize, usize); LEN],
+}
 
-pub fn main() {
-    let mut sol: solver::Solver = Default::default();
+#[derive(Debug, Clone)]
+struct Conj<const LEN: usize> {
+    output: Shape,
+    inputs: [Shape; LEN],
+}
 
-    let set = sol.add_domain("set".into(), 3);
-    let _one = sol.add_relation("one".into(), vec![set]);
-    let _inv = sol.add_relation("inv".into(), vec![set, set]);
-    let mul = sol.add_relation("mul".into(), vec![set, set, set]);
+impl<const LEN: usize> Conj<LEN> {
+    fn new(output: Shape, inputs: [Shape; LEN]) -> Self {
+        for input in inputs.iter() {
+            debug_assert!(output.equals(input));
+        }
+        Self { output, inputs }
+    }
 
-    sol.add_clause(vec![
-        (false, mul, vec![0, 1, 3]),
-        (false, mul, vec![3, 2, 4]),
-        (false, mul, vec![1, 2, 5]),
-        (true, mul, vec![0, 5, 4]),
-    ]);
-
-    sol.print();
-    sol.print_relation(mul);
+    fn apply(&self, buffer: &mut Buffer2) {}
 }

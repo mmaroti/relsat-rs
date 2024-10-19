@@ -72,6 +72,19 @@ impl Shape {
         volume
     }
 
+    /// Returns true if the list of lengths of this and the other shape is equal.
+    pub fn equals(&self, other: &Shape) -> bool {
+        if self.axes.len() != other.axes.len() {
+            return false;
+        }
+        for (a, b) in self.axes.iter().zip(other.axes.iter()) {
+            if a.length != b.length {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /// Permutes the axes of the given shape. The map must be of size
     /// dimension. The old coordinate `i` will be placed at the new
     /// coordinate `map[i]`.
@@ -151,7 +164,7 @@ impl Shape {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Axis2 {
     stride: usize,
     index: usize,
