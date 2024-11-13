@@ -26,8 +26,8 @@ impl Bit1 {
     }
 
     #[inline(always)]
-    pub fn idx(self) -> u32 {
-        self.0
+    pub fn idx(self) -> usize {
+        self.0 as usize
     }
 }
 
@@ -42,8 +42,8 @@ impl Bit2 {
     }
 
     #[inline(always)]
-    pub const fn idx(self) -> u32 {
-        self.0
+    pub const fn idx(self) -> usize {
+        self.0 as usize
     }
 }
 
@@ -99,25 +99,100 @@ impl Op222 {
     pub const fn of(self, a: Bit2, b: Bit2) -> Bit2 {
         Bit2((self.0 >> ((a.0 << 3) | (b.0 << 1))) & 3)
     }
+}
 
-    #[cfg(test)]
-    fn idempotent(self) -> bool {
+pub const BOOL_FALSE: Bit2 = Bit2(0);
+pub const BOOL_UNDEF1: Bit2 = Bit2(1);
+pub const BOOL_UNDEF2: Bit2 = Bit2(2);
+pub const BOOL_TRUE: Bit2 = Bit2(3);
+
+pub const BOOL_FORMAT1: [char; 4] = ['0', '?', 'x', '1'];
+pub const BOOL_FORMAT2: [&str; 4] = ["false", "undef1", "undef2", "true"];
+
+pub const BOOL_NOT: Op22 = Op22::new(&[
+    (BOOL_FALSE, BOOL_TRUE),
+    (BOOL_UNDEF1, BOOL_UNDEF1),
+    (BOOL_UNDEF2, BOOL_UNDEF2),
+    (BOOL_TRUE, BOOL_FALSE),
+]);
+
+pub const BOOL_OR: Op222 = Op222::new(&[
+    (BOOL_FALSE, BOOL_FALSE, BOOL_FALSE),
+    (BOOL_FALSE, BOOL_UNDEF1, BOOL_UNDEF1),
+    (BOOL_FALSE, BOOL_UNDEF2, BOOL_UNDEF2),
+    (BOOL_FALSE, BOOL_TRUE, BOOL_TRUE),
+    (BOOL_UNDEF1, BOOL_FALSE, BOOL_UNDEF1),
+    (BOOL_UNDEF1, BOOL_UNDEF1, BOOL_UNDEF2),
+    (BOOL_UNDEF1, BOOL_UNDEF2, BOOL_UNDEF2),
+    (BOOL_UNDEF1, BOOL_TRUE, BOOL_TRUE),
+    (BOOL_UNDEF2, BOOL_FALSE, BOOL_UNDEF2),
+    (BOOL_UNDEF2, BOOL_UNDEF1, BOOL_UNDEF2),
+    (BOOL_UNDEF2, BOOL_UNDEF2, BOOL_UNDEF2),
+    (BOOL_UNDEF2, BOOL_TRUE, BOOL_TRUE),
+    (BOOL_TRUE, BOOL_FALSE, BOOL_TRUE),
+    (BOOL_TRUE, BOOL_UNDEF1, BOOL_TRUE),
+    (BOOL_TRUE, BOOL_UNDEF2, BOOL_TRUE),
+    (BOOL_TRUE, BOOL_TRUE, BOOL_TRUE),
+]);
+
+pub const BOOL_ORNOT: Op222 = Op222::new(&[
+    (BOOL_FALSE, BOOL_TRUE, BOOL_FALSE),
+    (BOOL_FALSE, BOOL_UNDEF1, BOOL_UNDEF1),
+    (BOOL_FALSE, BOOL_UNDEF2, BOOL_UNDEF2),
+    (BOOL_FALSE, BOOL_FALSE, BOOL_TRUE),
+    (BOOL_UNDEF1, BOOL_TRUE, BOOL_UNDEF1),
+    (BOOL_UNDEF1, BOOL_UNDEF1, BOOL_UNDEF2),
+    (BOOL_UNDEF1, BOOL_UNDEF2, BOOL_UNDEF2),
+    (BOOL_UNDEF1, BOOL_FALSE, BOOL_TRUE),
+    (BOOL_UNDEF2, BOOL_TRUE, BOOL_UNDEF2),
+    (BOOL_UNDEF2, BOOL_UNDEF1, BOOL_UNDEF2),
+    (BOOL_UNDEF2, BOOL_UNDEF2, BOOL_UNDEF2),
+    (BOOL_UNDEF2, BOOL_FALSE, BOOL_TRUE),
+    (BOOL_TRUE, BOOL_TRUE, BOOL_TRUE),
+    (BOOL_TRUE, BOOL_UNDEF1, BOOL_TRUE),
+    (BOOL_TRUE, BOOL_UNDEF2, BOOL_TRUE),
+    (BOOL_TRUE, BOOL_FALSE, BOOL_TRUE),
+]);
+
+pub const BOOL_AND: Op222 = Op222::new(&[
+    (BOOL_FALSE, BOOL_FALSE, BOOL_FALSE),
+    (BOOL_FALSE, BOOL_UNDEF1, BOOL_FALSE),
+    (BOOL_FALSE, BOOL_UNDEF2, BOOL_FALSE),
+    (BOOL_FALSE, BOOL_TRUE, BOOL_FALSE),
+    (BOOL_UNDEF1, BOOL_FALSE, BOOL_FALSE),
+    (BOOL_UNDEF1, BOOL_UNDEF1, BOOL_UNDEF1),
+    (BOOL_UNDEF1, BOOL_UNDEF2, BOOL_UNDEF1),
+    (BOOL_UNDEF1, BOOL_TRUE, BOOL_UNDEF1),
+    (BOOL_UNDEF2, BOOL_FALSE, BOOL_FALSE),
+    (BOOL_UNDEF2, BOOL_UNDEF1, BOOL_UNDEF1),
+    (BOOL_UNDEF2, BOOL_UNDEF2, BOOL_UNDEF2),
+    (BOOL_UNDEF2, BOOL_TRUE, BOOL_UNDEF2),
+    (BOOL_TRUE, BOOL_FALSE, BOOL_FALSE),
+    (BOOL_TRUE, BOOL_UNDEF1, BOOL_UNDEF1),
+    (BOOL_TRUE, BOOL_UNDEF2, BOOL_UNDEF2),
+    (BOOL_TRUE, BOOL_TRUE, BOOL_TRUE),
+]);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn idempotent(op: Op222) -> bool {
         for a in 0..3 {
             let a = Bit2(a);
-            if self.of(a, a) != a {
+            if op.of(a, a) != a {
                 return false;
             }
         }
         true
     }
 
-    #[cfg(test)]
-    fn commutative(self) -> bool {
+    fn commutative(op: Op222) -> bool {
         for a in 0..3 {
             let a = Bit2(a);
             for b in 0..3 {
                 let b = Bit2(b);
-                if self.of(a, b) != self.of(b, a) {
+                if op.of(a, b) != op.of(b, a) {
                     return false;
                 }
             }
@@ -125,15 +200,14 @@ impl Op222 {
         true
     }
 
-    #[cfg(test)]
-    fn associative(self) -> bool {
+    fn associative(op: Op222) -> bool {
         for a in 0..3 {
             let a = Bit2(a);
             for b in 0..3 {
                 let b = Bit2(b);
                 for c in 0..3 {
                     let c = Bit2(c);
-                    if self.of(self.of(a, b), c) != self.of(a, self.of(b, c)) {
+                    if op.of(op.of(a, b), c) != op.of(a, op.of(b, c)) {
                         return false;
                     }
                 }
@@ -141,166 +215,41 @@ impl Op222 {
         }
         true
     }
-}
 
-pub const BOOL_FALSE: Bit2 = Bit2(0);
-pub const BOOL_UNDEF: Bit2 = Bit2(1);
-pub const BOOL_TRUE: Bit2 = Bit2(2);
-pub const BOOL_MISSING: Bit2 = Bit2(3);
-
-pub const BOOL_FORMAT: [char; 4] = ['0', '?', '1', 'x'];
-
-pub const BOOL_NOT: Op22 = Op22::new(&[
-    (BOOL_FALSE, BOOL_TRUE),
-    (BOOL_UNDEF, BOOL_UNDEF),
-    (BOOL_TRUE, BOOL_FALSE),
-    (BOOL_MISSING, BOOL_MISSING),
-]);
-
-pub const BOOL_OR: Op222 = Op222::new(&[
-    (BOOL_FALSE, BOOL_FALSE, BOOL_FALSE),
-    (BOOL_FALSE, BOOL_UNDEF, BOOL_UNDEF),
-    (BOOL_FALSE, BOOL_TRUE, BOOL_TRUE),
-    (BOOL_FALSE, BOOL_MISSING, BOOL_FALSE),
-    (BOOL_UNDEF, BOOL_FALSE, BOOL_UNDEF),
-    (BOOL_UNDEF, BOOL_UNDEF, BOOL_UNDEF),
-    (BOOL_UNDEF, BOOL_TRUE, BOOL_TRUE),
-    (BOOL_UNDEF, BOOL_MISSING, BOOL_UNDEF),
-    (BOOL_TRUE, BOOL_FALSE, BOOL_TRUE),
-    (BOOL_TRUE, BOOL_UNDEF, BOOL_TRUE),
-    (BOOL_TRUE, BOOL_TRUE, BOOL_TRUE),
-    (BOOL_TRUE, BOOL_MISSING, BOOL_TRUE),
-    (BOOL_MISSING, BOOL_FALSE, BOOL_FALSE),
-    (BOOL_MISSING, BOOL_UNDEF, BOOL_UNDEF),
-    (BOOL_MISSING, BOOL_TRUE, BOOL_TRUE),
-    (BOOL_MISSING, BOOL_MISSING, BOOL_MISSING),
-]);
-
-pub const BOOL_AND: Op222 = Op222::new(&[
-    (BOOL_FALSE, BOOL_FALSE, BOOL_FALSE),
-    (BOOL_FALSE, BOOL_UNDEF, BOOL_FALSE),
-    (BOOL_FALSE, BOOL_TRUE, BOOL_FALSE),
-    (BOOL_FALSE, BOOL_MISSING, BOOL_FALSE),
-    (BOOL_UNDEF, BOOL_FALSE, BOOL_FALSE),
-    (BOOL_UNDEF, BOOL_UNDEF, BOOL_UNDEF),
-    (BOOL_UNDEF, BOOL_TRUE, BOOL_UNDEF),
-    (BOOL_UNDEF, BOOL_MISSING, BOOL_UNDEF),
-    (BOOL_TRUE, BOOL_FALSE, BOOL_FALSE),
-    (BOOL_TRUE, BOOL_UNDEF, BOOL_UNDEF),
-    (BOOL_TRUE, BOOL_TRUE, BOOL_TRUE),
-    (BOOL_TRUE, BOOL_MISSING, BOOL_TRUE),
-    (BOOL_MISSING, BOOL_FALSE, BOOL_FALSE),
-    (BOOL_MISSING, BOOL_UNDEF, BOOL_UNDEF),
-    (BOOL_MISSING, BOOL_TRUE, BOOL_TRUE),
-    (BOOL_MISSING, BOOL_MISSING, BOOL_MISSING),
-]);
-
-pub const EVAL_FALSE: Bit2 = Bit2(0);
-pub const EVAL_UNIT: Bit2 = Bit2(1); // one BOOL_UNDEF value
-pub const EVAL_UNDEF: Bit2 = Bit2(2); // two or more BOOL_UNDEF values
-pub const EVAL_TRUE: Bit2 = Bit2(3);
-
-pub const EVAL_FORMAT1: [char; 4] = ['0', '!', '?', '1'];
-pub const EVAL_FORMAT2: [&str; 4] = ["false", "unit", "undef", "true"];
-
-pub const FOLD_POS: Op222 = Op222::new(&[
-    (EVAL_FALSE, BOOL_FALSE, EVAL_FALSE),
-    (EVAL_FALSE, BOOL_UNDEF, EVAL_UNIT),
-    (EVAL_FALSE, BOOL_TRUE, EVAL_TRUE),
-    (EVAL_FALSE, BOOL_MISSING, EVAL_FALSE),
-    (EVAL_UNIT, BOOL_FALSE, EVAL_UNIT),
-    (EVAL_UNIT, BOOL_UNDEF, EVAL_UNDEF),
-    (EVAL_UNIT, BOOL_TRUE, EVAL_TRUE),
-    (EVAL_UNIT, BOOL_MISSING, EVAL_UNIT),
-    (EVAL_UNDEF, BOOL_FALSE, EVAL_UNDEF),
-    (EVAL_UNDEF, BOOL_UNDEF, EVAL_UNDEF),
-    (EVAL_UNDEF, BOOL_TRUE, EVAL_TRUE),
-    (EVAL_UNDEF, BOOL_MISSING, EVAL_UNDEF),
-    (EVAL_TRUE, BOOL_FALSE, EVAL_TRUE),
-    (EVAL_TRUE, BOOL_UNDEF, EVAL_TRUE),
-    (EVAL_TRUE, BOOL_TRUE, EVAL_TRUE),
-    (EVAL_TRUE, BOOL_MISSING, EVAL_TRUE),
-]);
-
-pub const FOLD_NEG: Op222 = Op222::new(&[
-    (EVAL_FALSE, BOOL_FALSE, EVAL_TRUE),
-    (EVAL_FALSE, BOOL_UNDEF, EVAL_UNIT),
-    (EVAL_FALSE, BOOL_TRUE, EVAL_FALSE),
-    (EVAL_FALSE, BOOL_MISSING, EVAL_FALSE),
-    (EVAL_UNIT, BOOL_FALSE, EVAL_TRUE),
-    (EVAL_UNIT, BOOL_UNDEF, EVAL_UNDEF),
-    (EVAL_UNIT, BOOL_TRUE, EVAL_UNIT),
-    (EVAL_UNIT, BOOL_MISSING, EVAL_UNIT),
-    (EVAL_UNDEF, BOOL_FALSE, EVAL_TRUE),
-    (EVAL_UNDEF, BOOL_UNDEF, EVAL_UNDEF),
-    (EVAL_UNDEF, BOOL_TRUE, EVAL_UNDEF),
-    (EVAL_UNDEF, BOOL_MISSING, EVAL_UNDEF),
-    (EVAL_TRUE, BOOL_FALSE, EVAL_TRUE),
-    (EVAL_TRUE, BOOL_UNDEF, EVAL_TRUE),
-    (EVAL_TRUE, BOOL_TRUE, EVAL_TRUE),
-    (EVAL_TRUE, BOOL_MISSING, EVAL_TRUE),
-]);
-
-pub const EVAL_AND: Op222 = Op222::new(&[
-    (EVAL_FALSE, EVAL_FALSE, EVAL_FALSE),
-    (EVAL_FALSE, EVAL_UNIT, EVAL_FALSE),
-    (EVAL_FALSE, EVAL_UNDEF, EVAL_FALSE),
-    (EVAL_FALSE, EVAL_TRUE, EVAL_FALSE),
-    (EVAL_UNIT, EVAL_FALSE, EVAL_FALSE),
-    (EVAL_UNIT, EVAL_UNIT, EVAL_UNIT),
-    (EVAL_UNIT, EVAL_UNDEF, EVAL_UNIT),
-    (EVAL_UNIT, EVAL_TRUE, EVAL_UNIT),
-    (EVAL_UNDEF, EVAL_FALSE, EVAL_FALSE),
-    (EVAL_UNDEF, EVAL_UNIT, EVAL_UNIT),
-    (EVAL_UNDEF, EVAL_UNDEF, EVAL_UNDEF),
-    (EVAL_UNDEF, EVAL_TRUE, EVAL_UNDEF),
-    (EVAL_TRUE, EVAL_FALSE, EVAL_FALSE),
-    (EVAL_TRUE, EVAL_UNIT, EVAL_UNIT),
-    (EVAL_TRUE, EVAL_UNDEF, EVAL_UNDEF),
-    (EVAL_TRUE, EVAL_TRUE, EVAL_TRUE),
-]);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn laws() {
-        assert!(BOOL_AND.idempotent());
-        assert!(BOOL_AND.commutative());
-        assert!(BOOL_AND.associative());
-
-        assert!(BOOL_OR.idempotent());
-        assert!(BOOL_OR.commutative());
-        assert!(BOOL_OR.associative());
-
-        assert!(EVAL_AND.idempotent());
-        assert!(EVAL_AND.commutative());
-        assert!(EVAL_AND.associative());
-
-        for a in 0..3 {
-            let a = Bit2(a);
-            for b in 0..3 {
-                let b = Bit2(b);
-                assert_eq!(FOLD_POS.of(a, b), FOLD_NEG.of(a, BOOL_NOT.of(b)));
-                assert_eq!(
-                    BOOL_NOT.of(BOOL_AND.of(a, b)),
-                    BOOL_OR.of(BOOL_NOT.of(a), BOOL_NOT.of(b))
-                );
-            }
-        }
-
+    fn distributive(op1: Op222, op2: Op222) -> bool {
         for a in 0..3 {
             let a = Bit2(a);
             for b in 0..3 {
                 let b = Bit2(b);
                 for c in 0..3 {
                     let c = Bit2(c);
-                    assert_eq!(
-                        FOLD_POS.of(FOLD_POS.of(a, b), c),
-                        FOLD_POS.of(FOLD_POS.of(a, c), b),
-                    );
+                    if op1.of(a, op2.of(b, c)) != op2.of(op1.of(a, b), op1.of(a, c)) {
+                        return false;
+                    }
                 }
+            }
+        }
+        true
+    }
+
+    #[test]
+    fn laws() {
+        assert!(idempotent(BOOL_AND));
+        assert!(commutative(BOOL_AND));
+        assert!(associative(BOOL_AND));
+
+        assert!(!idempotent(BOOL_OR));
+        assert!(commutative(BOOL_OR));
+        assert!(associative(BOOL_OR));
+
+        assert!(distributive(BOOL_OR, BOOL_AND));
+        assert!(!distributive(BOOL_AND, BOOL_OR));
+
+        for a in 0..3 {
+            let a = Bit2(a);
+            for b in 0..3 {
+                let b = Bit2(b);
+                assert_eq!(BOOL_ORNOT.of(a, b), BOOL_OR.of(a, BOOL_NOT.of(b)));
             }
         }
     }

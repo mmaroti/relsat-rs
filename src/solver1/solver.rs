@@ -50,7 +50,7 @@ impl State {
             domains.iter().map(|d| d.size).collect(),
             self.assignment.len(),
         );
-        self.assignment.append(shape.volume(), BOOL_UNDEF);
+        self.assignment.append(shape.volume(), BOOL_UNDEF1);
         shape
     }
 
@@ -58,20 +58,20 @@ impl State {
         let mut cor = vec![0; shape.dimension()];
         for pos in shape.positions() {
             shape.coordinates(pos, &mut cor);
-            let val = BOOL_FORMAT[self.assignment.get(pos).idx() as usize];
+            let val = BOOL_FORMAT1[self.assignment.get(pos).idx()];
             println!("  {:?} = {}", cor, val);
         }
     }
 
     fn assign(&mut self, pos: usize, sign: bool, reason: Reason) {
-        assert!(self.assignment.get(pos) == BOOL_UNDEF);
+        assert!(self.assignment.get(pos) == BOOL_UNDEF1);
         self.assignment
             .set(pos, if sign { BOOL_TRUE } else { BOOL_FALSE });
         self.steps.push(Step { bvar: pos, reason });
     }
 
     fn make_decision(&mut self) -> bool {
-        let pos = (0..self.assignment.len()).find(|&i| self.assignment.get(i) == BOOL_UNDEF);
+        let pos = (0..self.assignment.len()).find(|&i| self.assignment.get(i) == BOOL_UNDEF1);
         if let Some(pos) = pos {
             self.levels.push(self.steps.len());
             self.assignment.set(pos, BOOL_TRUE);
@@ -93,8 +93,8 @@ impl State {
             }
             assert!(val == BOOL_TRUE);
             for step in self.steps[level + 1..].iter() {
-                assert!(self.assignment.get(step.bvar) != BOOL_UNDEF);
-                self.assignment.set(step.bvar, BOOL_UNDEF);
+                assert!(self.assignment.get(step.bvar) != BOOL_UNDEF1);
+                self.assignment.set(step.bvar, BOOL_UNDEF1);
             }
             self.levels.push(level);
             self.assignment.set(self.steps[level].bvar, BOOL_FALSE);
@@ -195,7 +195,7 @@ impl Literal {
 
     fn evaluate(&mut self, state: &State, target: &mut Buffer2) {
         self.positions.reset();
-        let op = if self.sign { FOLD_POS } else { FOLD_NEG };
+        let op = if self.sign { BOOL_OR } else { BOOL_ORNOT };
         target.apply(op, &state.assignment, &mut self.positions);
     }
 
@@ -237,7 +237,7 @@ struct Clause {
 
 impl Clause {
     fn new(shape: Shape, domains: Vec<Rc<Domain>>, literals: Vec<Literal>) -> Self {
-        let buffer = Buffer2::new(shape.volume(), EVAL_FALSE);
+        let buffer = Buffer2::new(shape.volume(), BOOL_FALSE);
         Self {
             shape,
             domains,
@@ -247,33 +247,33 @@ impl Clause {
     }
 
     fn evaluate(&mut self, state: &State) {
-        self.buffer.fill(EVAL_FALSE);
+        self.buffer.fill(BOOL_FALSE);
         for lit in self.literals.iter_mut() {
             lit.evaluate(state, &mut self.buffer);
         }
     }
 
     fn get_status(&self) -> Bit2 {
-        let mut res = EVAL_TRUE;
+        let mut res = BOOL_TRUE;
         for pos in 0..self.buffer.len() {
             let val = self.buffer.get(pos);
-            res = EVAL_AND.of(res, val);
+            res = BOOL_AND.of(res, val);
         }
         res
     }
 
-    // Returns EVAL_FALSE if the clause has failed (maybe with propagations),
-    // EVAL_UNIT if some propagations were made and the status is unclear,
-    // EVAL_TRUE if the clause is universally true, and EVAL_UNDEF otherwise.
+    // Returns BOOL_FALSE if the clause has failed (maybe with propagations),
+    // BOOL_UNDEF1 if some propagations were made and the status is unclear,
+    // BOOL_TRUE if the clause is universally true, and BOOL_UNDEF2 otherwise.
     fn propagate(&self, state: &mut State) -> Bit2 {
         let mut coordinates = vec![0; self.shape.dimension()];
-        let mut result = EVAL_TRUE;
+        let mut result = BOOL_TRUE;
         for pos in 0..self.buffer.len() {
             let val = self.buffer.get(pos);
-            result = EVAL_AND.of(result, val);
-            if val == EVAL_FALSE {
+            result = BOOL_AND.of(result, val);
+            if val == BOOL_FALSE {
                 break;
-            } else if val == EVAL_UNIT {
+            } else if val == BOOL_UNDEF1 {
                 self.shape.coordinates(pos, &mut coordinates);
                 let mut unit = 0;
                 let mut sign = None;
@@ -281,7 +281,7 @@ impl Clause {
                 for lit in self.literals.iter() {
                     let bvar = lit.position(&coordinates);
                     let bval = state.assignment.get(bvar);
-                    if bval == BOOL_UNDEF {
+                    if bval == BOOL_UNDEF1 {
                         assert!(sign.is_none());
                         sign = Some(lit.sign);
                         unit = bvar;
@@ -297,13 +297,13 @@ impl Clause {
         }
 
         let check = self.get_status();
-        assert!(result == check || result == EVAL_UNIT);
+        assert!(result == check || result == BOOL_UNDEF1);
         result
     }
 
     fn get_failure(&self) -> Option<Vec<usize>> {
         for pos in 0..self.buffer.len() {
-            if self.buffer.get(pos) == EVAL_FALSE {
+            if self.buffer.get(pos) == BOOL_FALSE {
                 let mut coordinates = vec![0; self.shape.dimension()];
                 self.shape.coordinates(pos, &mut coordinates);
                 return Some(
@@ -321,7 +321,7 @@ impl Clause {
         let mut cor = vec![0; self.shape.dimension()];
         for pos in self.shape.positions() {
             self.shape.coordinates(pos, &mut cor);
-            let val = EVAL_FORMAT1[self.buffer.get(pos).idx() as usize];
+            let val = BOOL_FORMAT1[self.buffer.get(pos).idx()];
             println!("  {:?} = {}", cor, val);
         }
     }
@@ -339,7 +339,7 @@ impl fmt::Display for Clause {
             write!(f, "{}", lit)?;
         }
 
-        write!(f, " = {}", EVAL_FORMAT2[self.get_status().idx() as usize])
+        write!(f, " = {}", BOOL_FORMAT2[self.get_status().idx()])
     }
 }
 
@@ -358,43 +358,43 @@ impl Exist {
         let range = shape.positions();
         let block = shape.length(shape.dimension() - 1);
 
-        let mut value1 = EVAL_TRUE;
+        let mut value1 = BOOL_TRUE;
         let mut pos = range.start;
         while pos < range.end {
-            let mut value2 = EVAL_FALSE;
+            let mut value2 = BOOL_FALSE;
             for i in pos..(pos + block) {
-                value2 = FOLD_POS.of(value2, state.assignment.get(i));
+                value2 = BOOL_OR.of(value2, state.assignment.get(i));
             }
-            value1 = EVAL_AND.of(value1, value2);
+            value1 = BOOL_AND.of(value1, value2);
             pos += block;
         }
         value1
     }
 
-    // Returns EVAL_FALSE if the clause has failed (maybe with propagations),
-    // EVAL_UNIT if some propagations were made and the status is unclear,
-    // EVAL_TRUE if the clause is universally true, and EVAL_UNDEF otherwise.
+    // Returns BOOL_FALSE if the clause has failed (maybe with propagations),
+    // BOOL_UNDEF1 if some propagations were made and the status is unclear,
+    // BOOL_TRUE if the clause is universally true, and BOOL_UNDEF2 otherwise.
     fn propagate(&self, state: &mut State) -> Bit2 {
         let shape = &self.variable.shape;
         let range = shape.positions();
         let block = shape.length(shape.dimension() - 1);
 
-        let mut result = EVAL_TRUE;
+        let mut result = BOOL_TRUE;
         let mut pos = range.start;
         while pos < range.end {
-            let mut value2 = EVAL_FALSE;
+            let mut value2 = BOOL_FALSE;
             let mut unit_pos = None;
             for i in pos..(pos + block) {
                 let val = state.assignment.get(i);
-                value2 = FOLD_POS.of(value2, val);
-                if val == BOOL_UNDEF {
+                value2 = BOOL_OR.of(value2, val);
+                if val == BOOL_UNDEF1 {
                     unit_pos = Some(i);
                 }
             }
-            result = EVAL_AND.of(result, value2);
-            if value2 == EVAL_FALSE {
+            result = BOOL_AND.of(result, value2);
+            if value2 == BOOL_FALSE {
                 break;
-            } else if value2 == EVAL_UNIT {
+            } else if value2 == BOOL_UNDEF1 {
                 debug_assert!(unit_pos.is_some());
                 state.assign(unit_pos.unwrap(), true, Reason::Exists);
             }
@@ -402,7 +402,7 @@ impl Exist {
         }
 
         let check = self.get_status(state);
-        assert!(result == check || result == EVAL_UNIT);
+        assert!(result == check || result == BOOL_UNDEF1);
         result
     }
 
@@ -413,11 +413,11 @@ impl Exist {
 
         let mut pos = range.start;
         while pos < range.end {
-            let mut value2 = EVAL_FALSE;
+            let mut value2 = BOOL_FALSE;
             for i in pos..(pos + block) {
-                value2 = FOLD_POS.of(value2, state.assignment.get(i));
+                value2 = BOOL_AND.of(value2, state.assignment.get(i));
             }
-            if value2 == EVAL_FALSE {
+            if value2 == BOOL_FALSE {
                 return Some(pos);
             }
             pos += block;
@@ -507,17 +507,17 @@ impl Solver {
     }
 
     pub fn get_clauses_status(&self) -> Bit2 {
-        let mut res = EVAL_TRUE;
+        let mut res = BOOL_TRUE;
         for cla in self.clauses.iter() {
-            res = EVAL_AND.of(res, cla.get_status());
+            res = BOOL_AND.of(res, cla.get_status());
         }
         res
     }
 
     pub fn get_exists_status(&self) -> Bit2 {
-        let mut res = EVAL_TRUE;
+        let mut res = BOOL_TRUE;
         for ext in self.exists.iter() {
-            res = EVAL_AND.of(res, ext.get_status(&self.state));
+            res = BOOL_AND.of(res, ext.get_status(&self.state));
         }
         res
     }
@@ -528,49 +528,49 @@ impl Solver {
         }
     }
 
-    // Returns EVAL_FALSE if the clause has failed (maybe with propagations),
-    // EVAL_UNIT if some propagations were made and the status is unclear,
-    // EVAL_TRUE if the clause is universally true, and EVAL_UNDEF otherwise.
+    // Returns BOOL_FALSE if the clause has failed (maybe with propagations),
+    // BOOL_UNDEF1 if some propagations were made and the status is unclear,
+    // BOOL_TRUE if the clause is universally true, and BOOL_UNDEF2 otherwise.
     pub fn propagate_clauses(&mut self) -> Bit2 {
-        let mut result = EVAL_TRUE;
+        let mut result = BOOL_TRUE;
         for cla in self.clauses.iter_mut() {
             cla.evaluate(&self.state);
             let val = cla.propagate(&mut self.state);
-            result = EVAL_AND.of(result, val);
+            result = BOOL_AND.of(result, val);
         }
 
         let check = self.get_clauses_status();
-        assert!(result == check || result == EVAL_UNIT);
+        assert!(result == check || result == BOOL_UNDEF1);
         result
     }
 
     pub fn propagate_exists(&mut self) -> Bit2 {
-        let mut result = EVAL_TRUE;
+        let mut result = BOOL_TRUE;
         for xst in self.exists.iter() {
             let val = xst.propagate(&mut self.state);
-            result = EVAL_AND.of(result, val);
+            result = BOOL_AND.of(result, val);
         }
 
         let check = self.get_exists_status();
-        assert!(result == check || result == EVAL_UNIT);
+        assert!(result == check || result == BOOL_UNDEF1);
         result
     }
 
     pub fn search_all(&mut self) {
         loop {
             let val1 = self.propagate_clauses();
-            if val1 == EVAL_FALSE {
+            if val1 == BOOL_FALSE {
                 println!("*** LEARNING ***");
                 self.evaluate_all();
                 self.print();
                 println!("*** END OF LEARNING ***");
                 break;
-            } else if val1 == EVAL_UNIT {
+            } else if val1 == BOOL_UNDEF1 {
                 continue;
             }
 
             let val2 = self.propagate_exists();
-            if val2 == EVAL_FALSE {
+            if val2 == BOOL_FALSE {
                 println!("*** EXISTS ***");
                 self.evaluate_all();
                 self.print();
@@ -578,9 +578,9 @@ impl Solver {
                 if !self.state.next_decision() {
                     break;
                 }
-            } else if val2 == EVAL_UNIT {
+            } else if val2 == BOOL_UNDEF1 {
                 continue;
-            } else if val1 == EVAL_TRUE && val2 == EVAL_TRUE {
+            } else if val1 == BOOL_TRUE && val2 == BOOL_TRUE {
                 if false {
                     println!("*** SOLUTION ***");
                     for var in self.variables.iter() {
@@ -597,8 +597,8 @@ impl Solver {
                 if false {
                     println!(
                         "{} {} {}",
-                        EVAL_FORMAT2[val1.idx() as usize],
-                        EVAL_FORMAT2[val2.idx() as usize],
+                        BOOL_FORMAT2[val1.idx()],
+                        BOOL_FORMAT2[val2.idx()],
                         ret,
                     );
                 }
@@ -676,7 +676,7 @@ impl Solver {
             println!(
                 "exists {} = {}",
                 ext.variable,
-                EVAL_FORMAT2[ext.get_status(&self.state).idx() as usize]
+                BOOL_FORMAT2[ext.get_status(&self.state).idx()]
             );
             if let Some(failure) = ext.get_failure(&self.state) {
                 println!("failure {:?}", self.format_var(failure));
@@ -688,11 +688,11 @@ impl Solver {
         }
         println!(
             "clauses status = {}",
-            EVAL_FORMAT2[self.get_clauses_status().idx() as usize]
+            BOOL_FORMAT2[self.get_clauses_status().idx()]
         );
         println!(
             "exists status = {}",
-            EVAL_FORMAT2[self.get_exists_status().idx() as usize]
+            BOOL_FORMAT2[self.get_exists_status().idx()]
         );
     }
 }

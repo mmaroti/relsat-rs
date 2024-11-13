@@ -87,7 +87,7 @@ impl Solver {
             domains.iter().map(|dom| self.domains[dom.0].size),
             self.assignment.len(),
         );
-        self.assignment.append(shape.volume(), BOOL_UNDEF);
+        self.assignment.append(shape.volume(), BOOL_UNDEF1);
 
         self.relations.push(Relation {
             name,
@@ -158,7 +158,7 @@ impl Solver {
         let mut cor = vec![0; shape.dimension()];
         'outer: loop {
             let pos = shape.position(cor.iter().cloned());
-            let val = BOOL_FORMAT[self.assignment.get(pos).idx() as usize];
+            let val = BOOL_FORMAT1[self.assignment.get(pos).idx() as usize];
             println!("assign {}{} = {}", rel.name, Tuple(&cor), val);
 
             for (i, c) in cor.iter_mut().enumerate().rev() {
@@ -174,7 +174,7 @@ impl Solver {
     }
 
     fn assign(&mut self, pos: usize, sign: bool, reason: Vec<usize>) {
-        assert!(self.assignment.get(pos) == BOOL_UNDEF);
+        assert!(self.assignment.get(pos) == BOOL_UNDEF1);
         self.assignment
             .set(pos, if sign { BOOL_TRUE } else { BOOL_FALSE });
         self.steps.push(Step { pos, reason });

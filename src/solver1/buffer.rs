@@ -32,13 +32,13 @@ impl Buffer1 {
     const FILL: [u32; 2] = [0x00000000, 0xffffffff];
 
     pub fn new(len: usize, val: Bit1) -> Self {
-        let fill = Buffer1::FILL[val.idx() as usize];
+        let fill = Buffer1::FILL[val.idx()];
         let data = vec![fill; (len + 31) / 32];
         Self { data, len }
     }
 
     pub fn append(&mut self, len: usize, val: Bit1) {
-        let fill = Buffer1::FILL[val.idx() as usize];
+        let fill = Buffer1::FILL[val.idx()];
         if self.len % 32 != 0 {
             let mask = (1 << (self.len % 32)) - 1;
             let val = self.data.last_mut().unwrap();
@@ -66,20 +66,20 @@ impl Buffer1 {
         debug_assert!(pos < self.len);
         let mut data = self.data[pos / 32];
         data &= !(1 << (pos % 32));
-        data |= val.idx() << (pos % 32);
+        data |= (val.idx() as u32) << (pos % 32);
         self.data[pos / 32] = data;
     }
 
     #[inline(always)]
     pub fn fill(&mut self, val: Bit1) {
-        let fill = Buffer1::FILL[val.idx() as usize];
+        let fill = Buffer1::FILL[val.idx()];
         self.data.fill(fill);
     }
 
     pub fn fill_range(&mut self, range: Range<usize>, val: Bit1) {
         debug_assert!(range.start <= range.end && range.end <= self.len);
 
-        let fill = Buffer1::FILL[val.idx() as usize];
+        let fill = Buffer1::FILL[val.idx()];
         if range.start >= range.end {
         } else if range.start / 32 == range.end / 32 {
             let mask = (1 << (range.start % 32)) - 1;
@@ -116,13 +116,13 @@ impl Buffer2 {
     const FILL: [u32; 4] = [0x00000000, 0x55555555, 0xaaaaaaaa, 0xffffffff];
 
     pub fn new(len: usize, val: Bit2) -> Self {
-        let fill = Buffer2::FILL[val.idx() as usize];
+        let fill = Buffer2::FILL[val.idx()];
         let data = vec![fill; (len + 15) / 16];
         Self { data, len }
     }
 
     pub fn append(&mut self, len: usize, val: Bit2) {
-        let fill = Buffer2::FILL[val.idx() as usize];
+        let fill = Buffer2::FILL[val.idx()];
         if self.len % 16 != 0 {
             let mask = (1 << (2 * (self.len % 16))) - 1;
             let val = self.data.last_mut().unwrap();
@@ -151,20 +151,20 @@ impl Buffer2 {
         debug_assert!(pos < self.len);
         let mut data = self.data[pos / 16];
         data &= !(3 << (2 * (pos % 16)));
-        data |= val.idx() << (2 * (pos % 16));
+        data |= (val.idx() as u32) << (2 * (pos % 16));
         self.data[pos / 16] = data;
     }
 
     #[inline(always)]
     pub fn fill(&mut self, val: Bit2) {
-        self.data.fill(Buffer2::FILL[val.idx() as usize]);
+        self.data.fill(Buffer2::FILL[val.idx()]);
     }
 
     #[inline(always)]
     pub fn fill_range(&mut self, range: Range<usize>, val: Bit2) {
         debug_assert!(range.start <= range.end && range.end <= self.len);
 
-        let fill = Buffer2::FILL[val.idx() as usize];
+        let fill = Buffer2::FILL[val.idx()];
         if range.start >= range.end {
         } else if range.start / 16 == range.end / 16 {
             let mask = (1 << (2 * (range.start % 16))) - 1;
