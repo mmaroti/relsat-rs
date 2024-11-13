@@ -196,8 +196,8 @@ pub const BOOL_AND: Op222 = Op222::new(&[
 ]);
 
 pub const EVAL_FALSE: Bit2 = Bit2(0);
-pub const EVAL_UNIT: Bit2 = Bit2(1);
-pub const EVAL_UNDEF: Bit2 = Bit2(2);
+pub const EVAL_UNIT: Bit2 = Bit2(1); // one BOOL_UNDEF value
+pub const EVAL_UNDEF: Bit2 = Bit2(2); // two or more BOOL_UNDEF values
 pub const EVAL_TRUE: Bit2 = Bit2(3);
 
 pub const EVAL_FORMAT1: [char; 4] = ['0', '!', '?', '1'];
@@ -283,6 +283,10 @@ mod tests {
             for b in 0..3 {
                 let b = Bit2(b);
                 assert_eq!(FOLD_POS.of(a, b), FOLD_NEG.of(a, BOOL_NOT.of(b)));
+                assert_eq!(
+                    BOOL_NOT.of(BOOL_AND.of(a, b)),
+                    BOOL_OR.of(BOOL_NOT.of(a), BOOL_NOT.of(b))
+                );
             }
         }
 

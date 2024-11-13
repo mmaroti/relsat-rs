@@ -39,5 +39,5 @@ impl<const LEN: usize> Conj<LEN> {
         Self { output, inputs }
     }
 
-    fn apply(&self, buffer: &mut Buffer2) {}
+    fn apply(&self, _buffer: &mut Buffer2) {}
 }

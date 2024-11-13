@@ -82,7 +82,7 @@ impl Shape {
                 return false;
             }
         }
-        return true;
+        true
     }
 
     /// Permutes the axes of the given shape. The map must be of size

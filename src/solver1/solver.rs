@@ -23,9 +23,18 @@ use super::buffer::Buffer2;
 use super::shape::{PositionIter, Shape};
 
 #[derive(Debug, Default)]
+enum Reason {
+    #[default]
+    Initial,
+    Decision,
+    Clause(Vec<usize>),
+    Exists,
+}
+
+#[derive(Debug, Default)]
 struct Step {
     bvar: usize,
-    reason: Vec<usize>,
+    reason: Reason,
 }
 
 #[derive(Debug, Default)]
@@ -54,7 +63,7 @@ impl State {
         }
     }
 
-    fn assign(&mut self, pos: usize, sign: bool, reason: Vec<usize>) {
+    fn assign(&mut self, pos: usize, sign: bool, reason: Reason) {
         assert!(self.assignment.get(pos) == BOOL_UNDEF);
         self.assignment
             .set(pos, if sign { BOOL_TRUE } else { BOOL_FALSE });
@@ -68,7 +77,7 @@ impl State {
             self.assignment.set(pos, BOOL_TRUE);
             self.steps.push(Step {
                 bvar: pos,
-                reason: vec![],
+                reason: Reason::Decision,
             });
             true
         } else {
@@ -110,6 +119,10 @@ impl Domain {
 
     fn eq(dom1: &Rc<Domain>, dom2: &Rc<Domain>) -> bool {
         std::ptr::eq(&**dom1, &**dom2)
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
     }
 }
 
@@ -249,19 +262,26 @@ impl Clause {
         res
     }
 
-    fn propagate(&mut self, state: &mut State) -> Bit2 {
+    // Returns EVAL_FALSE if the clause has failed (maybe with propagations),
+    // EVAL_UNIT if some propagations were made and the status is unclear,
+    // EVAL_TRUE if the clause is universally true, and EVAL_UNDEF otherwise.
+    fn propagate(&self, state: &mut State) -> Bit2 {
         let mut coordinates = vec![0; self.shape.dimension()];
-        let mut res = EVAL_TRUE;
+        let mut result = EVAL_TRUE;
         for pos in 0..self.buffer.len() {
             let val = self.buffer.get(pos);
-            if val == EVAL_UNIT {
+            result = EVAL_AND.of(result, val);
+            if val == EVAL_FALSE {
+                break;
+            } else if val == EVAL_UNIT {
                 self.shape.coordinates(pos, &mut coordinates);
                 let mut unit = 0;
                 let mut sign = None;
                 let mut reason = vec![];
                 for lit in self.literals.iter() {
                     let bvar = lit.position(&coordinates);
-                    if state.assignment.get(bvar) == BOOL_UNDEF {
+                    let bval = state.assignment.get(bvar);
+                    if bval == BOOL_UNDEF {
                         assert!(sign.is_none());
                         sign = Some(lit.sign);
                         unit = bvar;
@@ -269,13 +289,16 @@ impl Clause {
                         reason.push(bvar);
                     }
                 }
+                // maybe it was already assigned.
                 if let Some(sign) = sign {
-                    state.assign(unit, sign, reason);
+                    state.assign(unit, sign, Reason::Clause(reason));
                 }
             }
-            res = EVAL_AND.of(res, val);
         }
-        res
+
+        let check = self.get_status();
+        assert!(result == check || result == EVAL_UNIT);
+        result
     }
 
     fn get_failure(&self) -> Option<Vec<usize>> {
@@ -346,6 +369,41 @@ impl Exist {
             pos += block;
         }
         value1
+    }
+
+    // Returns EVAL_FALSE if the clause has failed (maybe with propagations),
+    // EVAL_UNIT if some propagations were made and the status is unclear,
+    // EVAL_TRUE if the clause is universally true, and EVAL_UNDEF otherwise.
+    fn propagate(&self, state: &mut State) -> Bit2 {
+        let shape = &self.variable.shape;
+        let range = shape.positions();
+        let block = shape.length(shape.dimension() - 1);
+
+        let mut result = EVAL_TRUE;
+        let mut pos = range.start;
+        while pos < range.end {
+            let mut value2 = EVAL_FALSE;
+            let mut unit_pos = None;
+            for i in pos..(pos + block) {
+                let val = state.assignment.get(i);
+                value2 = FOLD_POS.of(value2, val);
+                if val == BOOL_UNDEF {
+                    unit_pos = Some(i);
+                }
+            }
+            result = EVAL_AND.of(result, value2);
+            if value2 == EVAL_FALSE {
+                break;
+            } else if value2 == EVAL_UNIT {
+                debug_assert!(unit_pos.is_some());
+                state.assign(unit_pos.unwrap(), true, Reason::Exists);
+            }
+            pos += block;
+        }
+
+        let check = self.get_status(state);
+        assert!(result == check || result == EVAL_UNIT);
+        result
     }
 
     fn get_failure(&self, state: &State) -> Option<usize> {
@@ -435,7 +493,7 @@ impl Solver {
 
     pub fn set_value(&mut self, sign: bool, var: &Rc<Variable>, coordinates: &[usize]) {
         let pos = var.shape.position(coordinates.iter());
-        self.state.assign(pos, sign, vec![]);
+        self.state.assign(pos, sign, Reason::Initial);
     }
 
     pub fn set_equality(&mut self, var: &Rc<Variable>) {
@@ -443,8 +501,7 @@ impl Solver {
         assert!(shape.dimension() == 2);
         for i in 0..shape.length(0) {
             for j in 0..shape.length(1) {
-                let pos = shape.position([i, j].iter());
-                self.state.assign(pos, i == j, vec![]);
+                self.set_value(i == j, var, &[i, j]);
             }
         }
     }
@@ -471,69 +528,80 @@ impl Solver {
         }
     }
 
-    pub fn propagate(&mut self) -> Bit2 {
-        let mut num = 0;
-        let mut res = EVAL_TRUE;
-        let mut idx = 0;
-        while num < self.clauses.len() {
-            if idx >= self.clauses.len() {
-                idx = 0;
-            }
-            let cla = &mut self.clauses[idx];
-            idx += 1;
+    // Returns EVAL_FALSE if the clause has failed (maybe with propagations),
+    // EVAL_UNIT if some propagations were made and the status is unclear,
+    // EVAL_TRUE if the clause is universally true, and EVAL_UNDEF otherwise.
+    pub fn propagate_clauses(&mut self) -> Bit2 {
+        let mut result = EVAL_TRUE;
+        for cla in self.clauses.iter_mut() {
             cla.evaluate(&self.state);
             let val = cla.propagate(&mut self.state);
-            if val == EVAL_FALSE {
-                res = EVAL_FALSE;
-                break;
-            } else if val == EVAL_UNIT {
-                res = EVAL_TRUE;
-                num = 0;
-            } else {
-                res = EVAL_AND.of(res, val);
-                num += 1;
-            }
+            result = EVAL_AND.of(result, val);
         }
-        assert!(res != EVAL_UNIT);
-        assert!(res == self.get_clauses_status());
-        res
+
+        let check = self.get_clauses_status();
+        assert!(result == check || result == EVAL_UNIT);
+        result
+    }
+
+    pub fn propagate_exists(&mut self) -> Bit2 {
+        let mut result = EVAL_TRUE;
+        for xst in self.exists.iter() {
+            let val = xst.propagate(&mut self.state);
+            result = EVAL_AND.of(result, val);
+        }
+
+        let check = self.get_exists_status();
+        assert!(result == check || result == EVAL_UNIT);
+        result
     }
 
     pub fn search_all(&mut self) {
         loop {
-            let val1 = self.propagate();
-            let val2 = self.get_exists_status();
-
+            let val1 = self.propagate_clauses();
             if val1 == EVAL_FALSE {
                 println!("*** LEARNING ***");
                 self.evaluate_all();
                 self.print();
-                self.print_steps();
                 println!("*** END OF LEARNING ***");
                 break;
-            } else if val2 == EVAL_FALSE {
+            } else if val1 == EVAL_UNIT {
+                continue;
+            }
+
+            let val2 = self.propagate_exists();
+            if val2 == EVAL_FALSE {
                 println!("*** EXISTS ***");
                 self.evaluate_all();
                 self.print();
-                self.print_steps();
-                println!();
-                let ret = self.state.next_decision();
-                if !ret {
+                println!("*** END OF EXISTS ***");
+                if !self.state.next_decision() {
                     break;
                 }
+            } else if val2 == EVAL_UNIT {
+                continue;
             } else if val1 == EVAL_TRUE && val2 == EVAL_TRUE {
-                println!("*** SOLUTION ***");
-                for var in self.variables.iter() {
-                    println!("variable {}", var);
-                    self.state.print_table(&var.shape);
+                if false {
+                    println!("*** SOLUTION ***");
+                    for var in self.variables.iter() {
+                        println!("variable {}", var);
+                        self.state.print_table(&var.shape);
+                    }
+                    println!("*** END OF SOLUTION ***");
                 }
-                println!();
-                let ret = self.state.next_decision();
-                if !ret {
+                if !self.state.next_decision() {
                     break;
                 }
             } else {
                 let ret = self.state.make_decision();
+                if false {
+                    println!(
+                        "{} {} {}",
+                        EVAL_FORMAT2[val1.idx() as usize],
+                        EVAL_FORMAT2[val2.idx() as usize],
+                        ret,
+                    );
+                }
                 assert!(ret);
             }
         }
@@ -564,18 +632,16 @@ impl Solver {
         )
     }
 
-    fn print_step(&self, step: &Step) {
-        let reason: Vec<String> = step
-            .reason
-            .iter()
-            .map(|&bvar| self.format_var(bvar))
-            .collect();
-        println!("step {} from {:?}", self.format_var(step.bvar), reason);
-    }
-
-    pub fn print_steps(&self) {
-        for step in self.state.steps.iter() {
-            self.print_step(step);
+    fn format_reason(&self, reason: &Reason) -> String {
+        match reason {
+            Reason::Initial => "initial".into(),
+            Reason::Decision => "decision".into(),
+            Reason::Clause(vars) => vars
+                .iter()
+                .map(|&bvar| self.format_var(bvar))
+                .collect::<Vec<String>>()
+                .join(" "),
+            Reason::Exists => "exists".into(),
         }
     }
 
@@ -586,6 +652,13 @@ impl Solver {
         for var in self.variables.iter() {
             println!("variable {}", var);
             self.state.print_table(&var.shape);
+        }
+        for step in self.state.steps.iter() {
+            println!(
+                "step {} from {}",
+                self.format_var(step.bvar),
+                self.format_reason(&step.reason)
+            );
         }
         for cla in self.clauses.iter() {
             println!("clause {}", cla);
@@ -609,8 +682,10 @@ impl Solver {
                 println!("failure {:?}", self.format_var(failure));
             }
         }
-        println!("steps = {:?}", self.state.steps);
-        println!("levels = {:?}", self.state.levels);
+        if false {
+            println!("steps = {:?}", self.state.steps);
+            println!("levels = {:?}", self.state.levels);
+        }
         println!(
             "clauses status = {}",
             EVAL_FORMAT2[self.get_clauses_status().idx() as usize]
