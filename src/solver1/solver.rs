@@ -15,7 +15,6 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-use std::fmt;
 use std::rc::Rc;
 
 use super::bitops::*;
@@ -42,12 +41,15 @@ struct State {
     assignment: Buffer2,
     steps: Vec<Step>,
     levels: Vec<usize>,
+    domains: Vec<Domain>,
 }
 
+struct Member<'a, T>(&'a State, T);
+
 impl State {
-    fn create_table(&mut self, domains: &[Rc<Domain>]) -> Shape {
+    fn create_table(&mut self, doms: &[Dom]) -> Shape {
         let shape = Shape::new(
-            domains.iter().map(|d| d.size).collect(),
+            doms.iter().map(|dom| self.domains[dom.0].size).collect(),
             self.assignment.len(),
         );
         self.assignment.append(shape.volume(), BOOL_UNDEF1);
@@ -126,9 +128,28 @@ impl Domain {
     }
 }
 
-impl fmt::Display for Domain {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for Domain {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{} = {}", self.name, self.size)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Dom(usize);
+
+impl std::fmt::Display for Member<'_, &Vec<Dom>> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "(")?;
+        let mut first = true;
+        for &dom in self.1.iter() {
+            if first {
+                first = false;
+            } else {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", self.0.domains[dom.0].name)?;
+        }
+        write!(f, ")")
     }
 }
 
@@ -136,34 +157,24 @@ impl fmt::Display for Domain {
 pub struct Variable {
     shape: Shape,
     name: String,
-    domains: Vec<Rc<Domain>>,
+    doms: Vec<Dom>,
 }
 
 impl Variable {
-    fn new(state: &mut State, name: &str, domains: Vec<Rc<Domain>>) -> Self {
+    fn new(state: &mut State, name: &str, domains: Vec<Dom>) -> Self {
         let name = name.to_string();
         let shape = state.create_table(&domains);
         Self {
             name,
-            domains,
+            doms: domains,
             shape,
         }
     }
 }
 
-impl fmt::Display for Variable {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}(", self.name)?;
-        let mut first = true;
-        for dom in &self.domains {
-            if first {
-                first = false;
-            } else {
-                write!(f, ",")?;
-            }
-            write!(f, "{}", dom.name)?;
-        }
-        write!(f, ")")
+impl std::fmt::Display for Member<'_, &Variable> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}({})", self.1.name, Member(self.0, &self.1.doms))
     }
 }
 
@@ -206,8 +217,8 @@ impl Literal {
     }
 }
 
-impl fmt::Display for Literal {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "{}{}(",
@@ -229,14 +240,14 @@ impl fmt::Display for Literal {
 
 #[derive(Debug)]
 struct Clause {
-    domains: Vec<Rc<Domain>>,
+    domains: Vec<Dom>,
     literals: Vec<Literal>,
     shape: Shape,
     buffer: Buffer2,
 }
 
 impl Clause {
-    fn new(shape: Shape, domains: Vec<Rc<Domain>>, literals: Vec<Literal>) -> Self {
+    fn new(shape: Shape, domains: Vec<Dom>, literals: Vec<Literal>) -> Self {
         let buffer = Buffer2::new(shape.volume(), BOOL_FALSE);
         Self {
             shape,
@@ -327,8 +338,8 @@ impl Clause {
     }
 }
 
-impl fmt::Display for Clause {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for Clause {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut first = true;
         for lit in self.literals.iter() {
             if first {
@@ -426,64 +437,68 @@ impl Exist {
     }
 }
 
-impl fmt::Display for Exist {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.variable.fmt(f)
+impl std::fmt::Display for Member<'_, &Exist> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        Member(self.0, &*self.1.variable).fmt(f)
     }
 }
 
 #[derive(Debug, Default)]
 pub struct Solver {
     state: State,
-    domains: Vec<Rc<Domain>>,
     variables: Vec<Rc<Variable>>,
     clauses: Vec<Clause>,
     exists: Vec<Exist>,
 }
 
 impl Solver {
-    pub fn add_domain(&mut self, name: &str, size: usize) -> Rc<Domain> {
-        assert!(self.domains.iter().all(|dom| dom.name != name));
-        let dom = Rc::new(Domain::new(name, size));
-        self.domains.push(dom.clone());
+    pub fn add_domain(&mut self, name: &str, size: usize) -> Dom {
+        let domains = &mut self.state.domains;
+        assert!(domains.iter().all(|domain| domain.name != name));
+        let dom = Dom(domains.len());
+        domains.push(Domain::new(name, size));
         dom
     }
 
-    pub fn add_variable(&mut self, name: &str, domains: Vec<&Rc<Domain>>) -> Rc<Variable> {
+    pub fn add_variable(&mut self, name: &str, doms: Vec<Dom>) -> Rc<Variable> {
         assert!(self.variables.iter().all(|rel| rel.name != name));
-        let domains = domains.into_iter().cloned().collect();
-        let rel = Rc::new(Variable::new(&mut self.state, name, domains));
+        let rel = Rc::new(Variable::new(&mut self.state, name, doms));
         self.variables.push(rel.clone());
         rel
     }
 
     pub fn add_clause(&mut self, literals: Vec<(bool, &Rc<Variable>, Vec<usize>)>) {
-        let mut domains: Vec<Option<Rc<Domain>>> = Default::default();
+        let mut doms: Vec<Option<Dom>> = Default::default();
         for (_, var, indices) in literals.iter() {
-            assert_eq!(var.domains.len(), indices.len());
+            assert_eq!(var.doms.len(), indices.len());
             for (pos, &idx) in indices.iter().enumerate() {
-                if domains.len() <= idx {
-                    domains.resize(idx + 1, None);
+                if doms.len() <= idx {
+                    doms.resize(idx + 1, None);
                 }
-                let dom1 = &var.domains[pos];
-                let dom2 = &mut domains[idx];
+                let dom1 = var.doms[pos];
+                let dom2 = &mut doms[idx];
                 if dom2.is_none() {
-                    *dom2 = Some(dom1.clone());
+                    *dom2 = Some(dom1);
                 } else {
-                    let dom2 = dom2.as_ref().unwrap();
-                    assert!(Domain::eq(dom1, dom2));
+                    let dom2 = dom2.unwrap();
+                    assert_eq!(dom1, dom2);
                 }
             }
         }
-        let domains: Vec<Rc<Domain>> = domains.into_iter().map(|d| d.unwrap()).collect();
+        let doms: Vec<Dom> = doms.into_iter().map(|dom| dom.unwrap()).collect();
 
-        let shape = Shape::new(domains.iter().map(|d| d.size).collect(), 0);
+        let shape = Shape::new(
+            doms.iter()
+                .map(|dom| self.state.domains[dom.0].size)
+                .collect(),
+            0,
+        );
         let literals: Vec<Literal> = literals
             .into_iter()
             .map(|(sign, var, indices)| Literal::new(&shape, sign, var, indices))
             .collect();
 
-        let cla = Clause::new(shape, domains, literals);
+        let cla = Clause::new(shape, doms, literals);
         self.clauses.push(cla);
     }
 
@@ -584,7 +599,7 @@ impl Solver {
                 if false {
                     println!("*** SOLUTION ***");
                     for var in self.variables.iter() {
-                        println!("variable {}", var);
+                        println!("variable {}", Member(&self.state, &**var));
                         self.state.print_table(&var.shape);
                     }
                     println!("*** END OF SOLUTION ***");
@@ -646,11 +661,11 @@ impl Solver {
     }
 
     pub fn print(&self) {
-        for dom in self.domains.iter() {
-            println!("domain {}", dom);
+        for domain in self.state.domains.iter() {
+            println!("domain {}", domain);
         }
         for var in self.variables.iter() {
-            println!("variable {}", var);
+            println!("variable {}", Member(&self.state, &**var));
             self.state.print_table(&var.shape);
         }
         for step in self.state.steps.iter() {
@@ -675,7 +690,7 @@ impl Solver {
             // println!("exist {}", ext);
             println!(
                 "exists {} = {}",
-                ext.variable,
+                Member(&self.state, &*ext.variable),
                 BOOL_FORMAT2[ext.get_status(&self.state).idx()]
             );
             if let Some(failure) = ext.get_failure(&self.state) {

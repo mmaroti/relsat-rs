@@ -66,8 +66,8 @@ impl Shape {
     /// The number of elements, which is just the product of all side length.
     pub fn volume(&self) -> usize {
         let mut volume = 1;
-        for &dim in self.axes.iter() {
-            volume *= dim.length;
+        for axis in self.axes.iter() {
+            volume *= axis.length;
         }
         volume
     }

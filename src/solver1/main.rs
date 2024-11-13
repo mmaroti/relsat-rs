@@ -22,10 +22,10 @@ use super::solver::*;
 pub fn main1() {
     let mut sol: Solver = Default::default();
     let set = sol.add_domain("set", 7);
-    let one = sol.add_variable("one", vec![&set]);
-    let inv = sol.add_variable("inv", vec![&set, &set]);
-    let mul = sol.add_variable("mul", vec![&set, &set, &set]);
-    let equ = sol.add_variable("equ", vec![&set, &set]);
+    let one = sol.add_variable("one", vec![set]);
+    let inv = sol.add_variable("inv", vec![set, set]);
+    let mul = sol.add_variable("mul", vec![set, set, set]);
+    let equ = sol.add_variable("equ", vec![set, set]);
 
     // equivalence relation
     if true {
@@ -244,10 +244,10 @@ pub fn main2() {
     let mut sol: Solver = Default::default();
     let set = sol.add_domain("set", 3);
 
-    let equ = sol.add_variable("equ", vec![&set, &set]);
+    let equ = sol.add_variable("equ", vec![set, set]);
     sol.set_equality(&equ);
 
-    let mul = sol.add_variable("mul", vec![&set, &set, &set]);
+    let mul = sol.add_variable("mul", vec![set, set, set]);
 
     sol.add_exist(&mul);
     sol.add_clause(vec![
@@ -334,12 +334,8 @@ pub fn main3() {
     let mut sol: Solver = Default::default();
     let set = sol.add_domain("set", 3);
 
-    let equ = sol.add_variable("equ", vec![&set, &set]);
-    for i in 0..set.size() {
-        for j in 0..set.size() {
-            sol.set_value(i == j, &equ, &[i, j]);
-        }
-    }
+    let equ = sol.add_variable("equ", vec![set, set]);
+    sol.set_equality(&equ);
 
     /*
     let ord = sol.add_variable("ord", vec![&set, &set]);
@@ -356,7 +352,7 @@ pub fn main3() {
     ]);
     */
 
-    let mul = sol.add_variable("mul", vec![&set, &set, &set]);
+    let mul = sol.add_variable("mul", vec![set, set, set]);
     sol.add_exist(&mul);
     sol.add_clause(vec![
         (false, &mul, vec![0, 1, 2]),
