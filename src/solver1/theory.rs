@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2019-2022, Miklos Maroti
+* Copyright (C) 2019-2024, Miklos Maroti
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
 */
 
 use std::rc::Rc;
-use std::{fmt, ptr};
 
 #[derive(Debug)]
 pub struct Domain {
@@ -31,15 +30,11 @@ impl Domain {
     pub fn name(&self) -> &str {
         &self.name
     }
-
-    pub fn ptr_eq(&self, other: &Self) -> bool {
-        ptr::eq(self, other)
-    }
 }
 
-impl fmt::Display for Domain {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
+impl std::fmt::Display for Domain {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "domain {}", self.name)
     }
 }
 
@@ -66,15 +61,11 @@ impl Predicate {
     pub fn domains(&self) -> &[Rc<Domain>] {
         &self.domains
     }
-
-    pub fn ptr_eq(&self, other: &Self) -> bool {
-        ptr::eq(self, other)
-    }
 }
 
-impl fmt::Display for Predicate {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}(", self.name)?;
+impl std::fmt::Display for Predicate {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "predicate {}(", self.name)?;
         for (idx, dom) in self.domains.iter().enumerate() {
             if idx != 0 {
                 write!(f, ",")?;
@@ -86,13 +77,13 @@ impl fmt::Display for Predicate {
 }
 
 #[derive(Debug)]
-pub struct AtomicFormula {
+pub struct Literal {
     sign: bool,
     predicate: Rc<Predicate>,
     variables: Box<[usize]>,
 }
 
-impl AtomicFormula {
+impl Literal {
     pub fn new(sign: bool, predicate: Rc<Predicate>, variables: Vec<usize>) -> Self {
         assert_eq!(predicate.arity(), variables.len());
         let variables = variables.into_boxed_slice();
@@ -124,8 +115,8 @@ impl AtomicFormula {
     }
 }
 
-impl fmt::Display for AtomicFormula {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", if self.sign { '+' } else { '-' })?;
         write!(f, "{}(", self.predicate.name)?;
         for (idx, &var) in self.variables.iter().enumerate() {
@@ -139,53 +130,51 @@ impl fmt::Display for AtomicFormula {
 }
 
 #[derive(Debug)]
-pub struct UniversalFormula {
-    variables: Box<[Rc<Domain>]>,
-    disjunction: Box<[AtomicFormula]>,
+pub struct Clause {
+    domains: Box<[Rc<Domain>]>,
+    literals: Box<[Literal]>,
 }
 
-impl UniversalFormula {
-    pub fn new(disjunction: Vec<AtomicFormula>) -> Self {
-        let disjunction = disjunction.into_boxed_slice();
-        let mut variables: Vec<Option<Rc<Domain>>> = Default::default();
+impl Clause {
+    pub fn new(literals: Vec<Literal>) -> Self {
+        let literals = literals.into_boxed_slice();
+        let mut domains: Vec<Option<Rc<Domain>>> = Default::default();
 
-        for fml in disjunction.iter() {
-            for (dom1, &var) in fml.domains().iter().zip(fml.variables().iter()) {
-                if variables.len() <= var {
-                    variables.resize(var + 1, None);
+        for lit in literals.iter() {
+            for (dom1, &var) in lit.domains().iter().zip(lit.variables().iter()) {
+                if domains.len() <= var {
+                    domains.resize(var + 1, None);
                 }
-                let dom2 = &mut variables[var];
+                let dom2 = &mut domains[var];
                 if let Some(dom2) = dom2 {
-                    assert!(dom1.ptr_eq(dom2));
+                    assert!(Rc::ptr_eq(dom1, dom2));
                 } else {
                     *dom2 = Some(dom1.clone());
                 }
             }
         }
 
-        let variables: Vec<Rc<Domain>> = variables.into_iter().map(|v| v.unwrap()).collect();
-        let variables = variables.into_boxed_slice();
+        let domains: Vec<Rc<Domain>> = domains.into_iter().map(|v| v.unwrap()).collect();
+        let domains = domains.into_boxed_slice();
 
-        Self {
-            variables,
-            disjunction,
-        }
+        Self { domains, literals }
     }
 
-    pub fn variables(&self) -> &[Rc<Domain>] {
-        &self.variables
+    pub fn domains(&self) -> &[Rc<Domain>] {
+        &self.domains
     }
 
-    pub fn disjunction(&self) -> &[AtomicFormula] {
-        &self.disjunction
+    pub fn literals(&self) -> &[Literal] {
+        &self.literals
     }
 }
 
-impl fmt::Display for UniversalFormula {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for (idx, frm) in self.disjunction.iter().enumerate() {
+impl std::fmt::Display for Clause {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "clause ")?;
+        for (idx, frm) in self.literals.iter().enumerate() {
             if idx != 0 {
-                write!(f, " | ")?;
+                write!(f, " ")?;
             }
             write!(f, "{}", frm)?;
         }
@@ -193,25 +182,59 @@ impl fmt::Display for UniversalFormula {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Theory {
     domains: Vec<Rc<Domain>>,
     predicates: Vec<Rc<Predicate>>,
-    formulas: Vec<Rc<UniversalFormula>>,
+    clauses: Vec<Rc<Clause>>,
 }
 
 impl Theory {
     pub fn new() -> Self {
-        Self {
-            domains: Default::default(),
-            predicates: Default::default(),
-            formulas: Default::default(),
-        }
+        Default::default()
     }
 
     pub fn add_domain(&mut self, domain: Rc<Domain>) {
-        assert!(self.domains.iter().all(|dom| !dom.ptr_eq(&domain)));
+        assert!(self.domains.iter().all(|dom| dom.name != domain.name));
         self.domains.push(domain);
+    }
+
+    fn has_domain(&self, domain: &Rc<Domain>) -> bool {
+        self.domains.iter().any(|dom| Rc::ptr_eq(dom, domain))
+    }
+
+    pub fn add_predicate(&mut self, predicate: Rc<Predicate>) {
+        assert!(self.predicates.iter().all(|prd| prd.name != predicate.name));
+        assert!(predicate.domains.iter().all(|dom| self.has_domain(dom)));
+        self.predicates.push(predicate);
+    }
+
+    fn has_predicate(&self, predicate: &Rc<Predicate>) -> bool {
+        self.predicates.iter().any(|prd| Rc::ptr_eq(prd, predicate))
+    }
+
+    pub fn add_clause(&mut self, clause: Rc<Clause>) {
+        assert!(clause.domains.iter().all(|dom| self.has_domain(dom)));
+        assert!(clause
+            .literals
+            .iter()
+            .all(|lit| self.has_predicate(lit.predicate())));
+        self.clauses.push(clause);
+    }
+}
+
+impl std::fmt::Display for Theory {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for dom in self.domains.iter() {
+            writeln!(f, "{}", dom)?;
+        }
+        for prd in self.predicates.iter() {
+            writeln!(f, "{}", prd)?;
+        }
+        for cla in self.clauses.iter() {
+            writeln!(f, "{}", cla)?;
+        }
+        Ok(())
     }
 }
 
@@ -221,30 +244,31 @@ mod tests {
 
     #[test]
     fn test() {
-        let set = Rc::new(Domain::new("set".into()));
-        let equ = Rc::new(Predicate::new("equ".into(), vec![set.clone(), set.clone()]));
+        let mut thy = Theory::new();
 
-        let equ_reflexive = Rc::new(UniversalFormula::new(vec![AtomicFormula::new(
+        let set = Rc::new(Domain::new("set".into()));
+        thy.add_domain(set.clone());
+
+        let equ = Rc::new(Predicate::new("equ".into(), vec![set.clone(), set.clone()]));
+        thy.add_predicate(equ.clone());
+
+        thy.add_clause(Rc::new(Clause::new(vec![Literal::new(
             true,
             equ.clone(),
             vec![0, 0],
-        )]));
+        )])));
 
-        let equ_symmetric = Rc::new(UniversalFormula::new(vec![
-            AtomicFormula::new(false, equ.clone(), vec![0, 1]),
-            AtomicFormula::new(true, equ.clone(), vec![1, 0]),
-        ]));
+        thy.add_clause(Rc::new(Clause::new(vec![
+            Literal::new(false, equ.clone(), vec![0, 1]),
+            Literal::new(true, equ.clone(), vec![1, 0]),
+        ])));
 
-        let equ_transitive = Rc::new(UniversalFormula::new(vec![
-            AtomicFormula::new(false, equ.clone(), vec![0, 1]),
-            AtomicFormula::new(false, equ.clone(), vec![1, 2]),
-            AtomicFormula::new(true, equ.clone(), vec![0, 2]),
-        ]));
+        thy.add_clause(Rc::new(Clause::new(vec![
+            Literal::new(false, equ.clone(), vec![0, 1]),
+            Literal::new(false, equ.clone(), vec![1, 2]),
+            Literal::new(true, equ.clone(), vec![0, 2]),
+        ])));
 
-        println!("{}", set);
-        println!("{}", equ);
-        println!("{}", equ_reflexive);
-        println!("{}", equ_symmetric);
-        println!("{}", equ_transitive);
+        println!("{}", thy);
     }
 }
