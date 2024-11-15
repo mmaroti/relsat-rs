@@ -15,8 +15,6 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-use std::rc::Rc;
-
 use super::bitops::*;
 use super::buffer::Buffer2;
 use super::shape::{PositionIter, Shape};
@@ -49,11 +47,11 @@ struct Member<'a, T>(&'a State, T);
 
 impl State {
     fn get_domain(&self, dom: Dom) -> &Domain {
-        &self.domains[dom.0]
+        &self.domains[dom.idx()]
     }
 
     fn get_variable(&self, var: Var) -> &Variable {
-        &self.variables[var.0]
+        &self.variables[var.idx()]
     }
 
     fn create_table(&mut self, doms: &[Dom]) -> Shape {
@@ -128,10 +126,6 @@ impl Domain {
         Self { name, size }
     }
 
-    fn eq(dom1: &Rc<Domain>, dom2: &Rc<Domain>) -> bool {
-        std::ptr::eq(&**dom1, &**dom2)
-    }
-
     pub fn size(&self) -> usize {
         self.size
     }
@@ -144,7 +138,18 @@ impl std::fmt::Display for Member<'_, &Domain> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Dom(usize);
+pub struct Dom(u32);
+
+impl Dom {
+    fn new(idx: usize) -> Self {
+        debug_assert!(idx < u32::MAX as usize);
+        Dom(idx as u32)
+    }
+
+    fn idx(&self) -> usize {
+        self.0 as usize
+    }
+}
 
 impl std::fmt::Display for Member<'_, Dom> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -195,7 +200,18 @@ impl std::fmt::Display for Member<'_, &Variable> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct Var(usize);
+pub struct Var(u32);
+
+impl Var {
+    fn new(idx: usize) -> Self {
+        debug_assert!(idx < u32::MAX as usize);
+        Var(idx as u32)
+    }
+
+    fn idx(&self) -> usize {
+        self.0 as usize
+    }
+}
 
 impl std::fmt::Display for Member<'_, Var> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -481,14 +497,14 @@ impl Solver {
     pub fn add_domain(&mut self, name: &str, size: usize) -> Dom {
         let domains = &mut self.state.domains;
         assert!(domains.iter().all(|domain| domain.name != name));
-        let dom = Dom(domains.len());
+        let dom = Dom::new(domains.len());
         domains.push(Domain::new(name, size));
         dom
     }
 
     pub fn add_variable(&mut self, name: &str, doms: Vec<Dom>) -> Var {
         assert!(self.state.variables.iter().all(|rel| rel.name != name));
-        let var = Var(self.state.variables.len());
+        let var = Var::new(self.state.variables.len());
         let variable = Variable::new(&mut self.state, name, doms);
         self.state.variables.push(variable);
         var
@@ -573,6 +589,10 @@ impl Solver {
         res
     }
 
+    pub fn get_status(&self) -> Bit2 {
+        BOOL_AND.of(self.get_clauses_status(), self.get_exists_status())
+    }
+
     pub fn evaluate_all(&mut self) {
         for cla in self.clauses.iter_mut() {
             cla.evaluate(&self.state);
@@ -609,29 +629,43 @@ impl Solver {
 
     pub fn search_all(&mut self) {
         loop {
-            let val1 = self.propagate_clauses();
-            if val1 == BOOL_FALSE {
+            let mut used_exists = false;
+            let mut value;
+            loop {
+                value = self.propagate_clauses();
+                if value == BOOL_UNDEF1 {
+                    continue;
+                } else if value == BOOL_FALSE {
+                    break;
+                }
+
+                used_exists = true;
+                value = BOOL_AND.of(value, self.propagate_exists());
+                if value == BOOL_UNDEF1 {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+
+            assert!(value != BOOL_UNDEF1 && value == self.get_status());
+            if value == BOOL_FALSE && !used_exists {
                 println!("*** LEARNING ***");
                 self.evaluate_all();
                 self.print();
                 println!("*** END OF LEARNING ***");
                 break;
-            } else if val1 == BOOL_UNDEF1 {
-                continue;
-            }
-
-            let val2 = self.propagate_exists();
-            if val2 == BOOL_FALSE {
-                println!("*** EXISTS ***");
-                self.evaluate_all();
-                self.print();
-                println!("*** END OF EXISTS ***");
+            } else if value == BOOL_FALSE && used_exists {
+                if true {
+                    println!("*** EXISTS ***");
+                    self.evaluate_all();
+                    self.print();
+                    println!("*** END OF EXISTS ***");
+                }
                 if !self.state.next_decision() {
                     break;
                 }
-            } else if val2 == BOOL_UNDEF1 {
-                continue;
-            } else if val1 == BOOL_TRUE && val2 == BOOL_TRUE {
+            } else if value == BOOL_TRUE {
                 if false {
                     println!("*** SOLUTION ***");
                     for var in self.state.variables.iter() {
@@ -644,15 +678,8 @@ impl Solver {
                     break;
                 }
             } else {
+                assert_eq!(value, BOOL_UNDEF2);
                 let ret = self.state.make_decision();
-                if false {
-                    println!(
-                        "{} {} {}",
-                        BOOL_FORMAT2[val1.idx()],
-                        BOOL_FORMAT2[val2.idx()],
-                        ret,
-                    );
-                }
                 assert!(ret);
             }
         }
