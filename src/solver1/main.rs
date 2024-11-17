@@ -269,69 +269,71 @@ pub fn main2() {
         (true, mul.clone(), vec![0, 5, 4]),
     ]);
 
-    // trivial consequences but not unit propagated
+    if true {
+        // not unit propagated consequences
 
-    sol.add_clause(vec![
-        (false, mul.clone(), vec![2, 1, 2]),
-        (false, mul.clone(), vec![1, 1, 0]),
-        (true, mul.clone(), vec![2, 0, 2]),
-    ]);
+        sol.add_clause(vec![
+            (false, mul.clone(), vec![2, 1, 2]),
+            (false, mul.clone(), vec![1, 1, 0]),
+            (true, mul.clone(), vec![2, 0, 2]),
+        ]);
 
-    sol.add_clause(vec![
-        (false, mul.clone(), vec![1, 1, 0]),
-        (false, mul.clone(), vec![0, 1, 0]),
-        (true, mul.clone(), vec![1, 0, 0]),
-    ]);
+        sol.add_clause(vec![
+            (false, mul.clone(), vec![1, 1, 0]),
+            (false, mul.clone(), vec![0, 1, 0]),
+            (true, mul.clone(), vec![1, 0, 0]),
+        ]);
 
-    sol.add_clause(vec![
-        (false, mul.clone(), vec![0, 0, 0]),
-        (false, mul.clone(), vec![0, 2, 1]),
-        (true, mul.clone(), vec![0, 1, 1]),
-    ]);
+        sol.add_clause(vec![
+            (false, mul.clone(), vec![0, 0, 0]),
+            (false, mul.clone(), vec![0, 2, 1]),
+            (true, mul.clone(), vec![0, 1, 1]),
+        ]);
 
-    sol.add_clause(vec![
-        (false, mul.clone(), vec![0, 2, 2]),
-        (false, mul.clone(), vec![2, 1, 1]),
-        (true, mul.clone(), vec![0, 1, 1]),
-    ]);
+        sol.add_clause(vec![
+            (false, mul.clone(), vec![0, 2, 2]),
+            (false, mul.clone(), vec![2, 1, 1]),
+            (true, mul.clone(), vec![0, 1, 1]),
+        ]);
 
-    sol.add_clause(vec![
-        (false, mul.clone(), vec![0, 2, 2]),
-        (false, mul.clone(), vec![2, 0, 1]),
-        (true, mul.clone(), vec![0, 1, 1]),
-    ]);
+        sol.add_clause(vec![
+            (false, mul.clone(), vec![0, 2, 2]),
+            (false, mul.clone(), vec![2, 0, 1]),
+            (true, mul.clone(), vec![0, 1, 1]),
+        ]);
 
-    sol.add_clause(vec![
-        (false, mul.clone(), vec![1, 2, 2]),
-        (false, mul.clone(), vec![2, 2, 0]),
-        (true, mul.clone(), vec![1, 0, 0]),
-    ]);
+        sol.add_clause(vec![
+            (false, mul.clone(), vec![1, 2, 2]),
+            (false, mul.clone(), vec![2, 2, 0]),
+            (true, mul.clone(), vec![1, 0, 0]),
+        ]);
 
-    sol.add_clause(vec![
-        (false, mul.clone(), vec![2, 2, 0]),
-        (false, mul.clone(), vec![0, 1, 1]),
-        (false, mul.clone(), vec![2, 1, 2]),
-        (true, equ.clone(), vec![0, 1]),
-    ]);
+        sol.add_clause(vec![
+            (false, mul.clone(), vec![2, 2, 0]),
+            (false, mul.clone(), vec![0, 1, 1]),
+            (false, mul.clone(), vec![2, 1, 2]),
+            (true, equ.clone(), vec![0, 1]),
+        ]);
 
-    sol.add_clause(vec![
-        (false, mul.clone(), vec![2, 1, 0]),
-        (false, mul.clone(), vec![0, 1, 1]),
-        (false, mul.clone(), vec![1, 1, 1]),
-        (true, equ.clone(), vec![0, 1]),
-    ]);
+        sol.add_clause(vec![
+            (false, mul.clone(), vec![2, 1, 0]),
+            (false, mul.clone(), vec![0, 1, 1]),
+            (false, mul.clone(), vec![1, 1, 1]),
+            (true, equ.clone(), vec![0, 1]),
+        ]);
 
-    sol.add_clause(vec![
-        (false, mul.clone(), vec![1, 1, 0]),
-        (false, mul.clone(), vec![0, 1, 1]),
-        (true, mul.clone(), vec![1, 0, 1]),
-    ]);
+        sol.add_clause(vec![
+            (false, mul.clone(), vec![1, 1, 0]),
+            (false, mul.clone(), vec![0, 1, 1]),
+            (true, mul.clone(), vec![1, 0, 1]),
+        ]);
 
-    sol.add_clause(vec![
-        (false, mul.clone(), vec![1, 1, 0]),
-        (false, mul.clone(), vec![0, 1, 2]),
-        (true, mul.clone(), vec![1, 0, 2]),
-    ]);
+        sol.add_clause(vec![
+            (false, mul.clone(), vec![1, 1, 0]),
+            (false, mul.clone(), vec![0, 1, 2]),
+            (true, mul.clone(), vec![1, 0, 2]),
+        ]);
+    }
 
     sol.search_all();
 }

@@ -199,7 +199,7 @@ impl std::fmt::Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "literal {}{}(",
+            "{}{}(",
             if self.sign { '+' } else { '-' },
             self.predicate.name,
         )?;
@@ -315,6 +315,7 @@ impl Clause {
 
 impl std::fmt::Display for Clause {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "clause ")?;
         for (idx, lit) in self.literals.iter().enumerate() {
             if idx != 0 {
                 write!(f, " ")?;
@@ -541,6 +542,10 @@ impl Solver {
     }
 
     pub fn search_all(&mut self) {
+        let mut num_solutions: usize = 0;
+        let mut num_learnings: usize = 0;
+        let mut num_deadends: usize = 0;
+
         loop {
             let mut used_exists = false;
             let mut value;
@@ -563,13 +568,19 @@ impl Solver {
 
             assert!(value != BOOL_UNDEF1 && value == self.get_status());
             if value == BOOL_FALSE && !used_exists {
-                println!("*** LEARNING ***");
-                self.evaluate_all();
-                self.print();
-                println!("*** END OF LEARNING ***");
-                break;
+                num_learnings += 1;
+                if false {
+                    println!("*** LEARNING ***");
+                    self.evaluate_all();
+                    self.print();
+                    println!("*** END OF LEARNING ***");
+                }
+                if !self.state.next_decision() {
+                    break;
+                }
             } else if value == BOOL_FALSE && used_exists {
-                if true {
+                num_deadends += 1;
+                if false {
                     println!("*** EXISTS ***");
                     self.evaluate_all();
                     self.print();
@@ -579,6 +590,7 @@ impl Solver {
                     break;
                 }
             } else if value == BOOL_TRUE {
+                num_solutions += 1;
                 if false {
                     println!("*** SOLUTION ***");
                     for pred in self.predicates.iter() {
@@ -596,6 +608,10 @@ impl Solver {
                 assert!(ret);
             }
         }
+
+        println!("Total solutions: {}", num_solutions);
+        println!("Total learnings: {}", num_learnings);
+        println!("Total deadends: {}", num_deadends);
     }
 
     fn lookup_var(&self, bvar: usize) -> &Predicate {
