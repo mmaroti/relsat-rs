@@ -160,23 +160,23 @@ impl std::fmt::Display for Predicate {
 #[derive(Debug)]
 struct Literal {
     predicate: Rc<Predicate>,
-    axes: Box<[usize]>,
+    variables: Box<[usize]>,
     positions: PositionIter,
     sign: bool,
 }
 
 impl Literal {
-    fn new(shape: &Shape, sign: bool, predicate: Rc<Predicate>, axes: Vec<usize>) -> Self {
-        let axes = axes.into_boxed_slice();
+    fn new(shape: &Shape, sign: bool, predicate: Rc<Predicate>, variables: Vec<usize>) -> Self {
+        let variables = variables.into_boxed_slice();
         let positions = predicate
             .shape
             .view()
-            .polymer(shape, &axes)
+            .polymer(shape, &variables)
             .simplify()
             .positions();
         Literal {
             predicate,
-            axes,
+            variables,
             positions,
             sign,
         }
@@ -191,7 +191,7 @@ impl Literal {
     fn position(&self, coordinates: &[usize]) -> usize {
         self.predicate
             .shape
-            .position(self.axes.iter().map(|&axis| &coordinates[axis]))
+            .position(self.variables.iter().map(|&var| &coordinates[var]))
     }
 }
 
@@ -203,11 +203,11 @@ impl std::fmt::Display for Literal {
             if self.sign { '+' } else { '-' },
             self.predicate.name,
         )?;
-        for (idx, axis) in self.axes.iter().enumerate() {
+        for (idx, var) in self.variables.iter().enumerate() {
             if idx != 0 {
                 write!(f, ",")?;
             }
-            write!(f, "x{}", axis)?;
+            write!(f, "x{}", var)?;
         }
         write!(f, ")")
     }
