@@ -21,11 +21,11 @@ use super::solver::*;
 
 pub fn main1() {
     let mut sol: Solver = Default::default();
-    let set = sol.add_domain("set", 7);
-    let one = sol.add_variable("one", vec![set.clone()]);
-    let inv = sol.add_variable("inv", vec![set.clone(), set.clone()]);
-    let mul = sol.add_variable("mul", vec![set.clone(), set.clone(), set.clone()]);
-    let equ = sol.add_variable("equ", vec![set.clone(), set.clone()]);
+    let set = sol.add_domain("set".into(), 7);
+    let one = sol.add_variable("one".into(), vec![set.clone()]);
+    let inv = sol.add_variable("inv".into(), vec![set.clone(), set.clone()]);
+    let mul = sol.add_variable("mul".into(), vec![set.clone(), set.clone(), set.clone()]);
+    let equ = sol.add_variable("equ".into(), vec![set.clone(), set.clone()]);
 
     // equivalence relation
     if true {
@@ -248,12 +248,12 @@ pub fn main1() {
 
 pub fn main2() {
     let mut sol: Solver = Default::default();
-    let set = sol.add_domain("set", 3);
+    let set = sol.add_domain("set".into(), 3);
 
-    let equ = sol.add_variable("equ", vec![set.clone(), set.clone()]);
+    let equ = sol.add_variable("equ".into(), vec![set.clone(), set.clone()]);
     sol.set_equality(&equ);
 
-    let mul = sol.add_variable("mul", vec![set.clone(), set.clone(), set.clone()]);
+    let mul = sol.add_variable("mul".into(), vec![set.clone(), set.clone(), set.clone()]);
 
     sol.add_exist(mul.clone());
     sol.add_clause(vec![
@@ -338,9 +338,9 @@ pub fn main2() {
 
 pub fn main3() {
     let mut sol: Solver = Default::default();
-    let set = sol.add_domain("set", 3);
+    let set = sol.add_domain("set".into(), 3);
 
-    let equ = sol.add_variable("equ", vec![set.clone(), set.clone()]);
+    let equ = sol.add_variable("equ".into(), vec![set.clone(), set.clone()]);
     sol.set_equality(&equ);
 
     /*
@@ -358,7 +358,7 @@ pub fn main3() {
     ]);
     */
 
-    let mul = sol.add_variable("mul", vec![set.clone(), set.clone(), set.clone()]);
+    let mul = sol.add_variable("mul".into(), vec![set.clone(), set.clone(), set.clone()]);
     sol.add_exist(mul.clone());
     sol.add_clause(vec![
         (false, mul.clone(), vec![0, 1, 2]),

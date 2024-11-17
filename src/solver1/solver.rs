@@ -42,8 +42,6 @@ struct State {
     levels: Vec<usize>,
 }
 
-struct Member<'a, T>(&'a State, T);
-
 impl State {
     fn create_table(&mut self, domains: &[Rc<Domain>]) -> Shape {
         let shape = Shape::new(
@@ -112,8 +110,7 @@ pub struct Domain {
 }
 
 impl Domain {
-    fn new(name: &str, size: usize) -> Self {
-        let name = name.to_string();
+    fn new(name: String, size: usize) -> Self {
         Self { name, size }
     }
 
@@ -129,16 +126,16 @@ impl std::fmt::Display for Domain {
 }
 
 #[derive(Debug)]
-pub struct Variable {
+pub struct Predicate {
     shape: Shape,
     name: String,
-    domains: Vec<Rc<Domain>>,
+    domains: Box<[Rc<Domain>]>,
 }
 
-impl Variable {
-    fn new(state: &mut State, name: &str, domains: Vec<Rc<Domain>>) -> Self {
-        let name = name.to_string();
+impl Predicate {
+    fn new(state: &mut State, name: String, domains: Vec<Rc<Domain>>) -> Self {
         let shape = state.create_table(&domains);
+        let domains = domains.into_boxed_slice();
         Self {
             name,
             domains,
@@ -147,9 +144,9 @@ impl Variable {
     }
 }
 
-impl std::fmt::Display for Variable {
+impl std::fmt::Display for Predicate {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "variable {}(", self.name)?;
+        write!(f, "predicate {}(", self.name)?;
         for (idx, dom) in self.domains.iter().enumerate() {
             if idx != 0 {
                 write!(f, ",")?;
@@ -162,23 +159,23 @@ impl std::fmt::Display for Variable {
 
 #[derive(Debug)]
 struct Literal {
-    variable: Rc<Variable>,
+    predicate: Rc<Predicate>,
     axes: Box<[usize]>,
     positions: PositionIter,
     sign: bool,
 }
 
 impl Literal {
-    fn new(shape: &Shape, sign: bool, variable: Rc<Variable>, axes: Vec<usize>) -> Self {
+    fn new(shape: &Shape, sign: bool, predicate: Rc<Predicate>, axes: Vec<usize>) -> Self {
         let axes = axes.into_boxed_slice();
-        let positions = variable
+        let positions = predicate
             .shape
             .view()
             .polymer(shape, &axes)
             .simplify()
             .positions();
         Literal {
-            variable,
+            predicate,
             axes,
             positions,
             sign,
@@ -192,21 +189,21 @@ impl Literal {
     }
 
     fn position(&self, coordinates: &[usize]) -> usize {
-        self.variable
+        self.predicate
             .shape
             .position(self.axes.iter().map(|&axis| &coordinates[axis]))
     }
 }
 
-impl std::fmt::Display for Member<'_, &Literal> {
+impl std::fmt::Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "literal {}{}(",
-            if self.1.sign { '+' } else { '-' },
-            self.1.variable.name,
+            if self.sign { '+' } else { '-' },
+            self.predicate.name,
         )?;
-        for (idx, axis) in self.1.axes.iter().enumerate() {
+        for (idx, axis) in self.axes.iter().enumerate() {
             if idx != 0 {
                 write!(f, ",")?;
             }
@@ -316,34 +313,31 @@ impl Clause {
     }
 }
 
-impl std::fmt::Display for Member<'_, &Clause> {
+impl std::fmt::Display for Clause {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut first = true;
-        for lit in self.1.literals.iter() {
-            if first {
-                first = false;
-            } else {
+        for (idx, lit) in self.literals.iter().enumerate() {
+            if idx != 0 {
                 write!(f, " ")?;
             }
-            write!(f, "{}", Member(self.0, lit))?;
+            write!(f, "{}", lit)?;
         }
 
-        write!(f, " = {}", BOOL_FORMAT2[self.1.get_status().idx()])
+        write!(f, " = {}", BOOL_FORMAT2[self.get_status().idx()])
     }
 }
 
 #[derive(Debug)]
 struct Exist {
-    variable: Rc<Variable>,
+    predicate: Rc<Predicate>,
 }
 
 impl Exist {
-    fn new(variable: Rc<Variable>) -> Self {
-        Exist { variable }
+    fn new(predicate: Rc<Predicate>) -> Self {
+        Exist { predicate }
     }
 
     fn get_status(&self, state: &State) -> Bit2 {
-        let shape = &self.variable.shape;
+        let shape = &self.predicate.shape;
         let range = shape.positions();
         let block = shape.length(shape.dimension() - 1);
 
@@ -364,7 +358,7 @@ impl Exist {
     // BOOL_UNDEF1 if some propagations were made and the status is unclear,
     // BOOL_TRUE if the clause is universally true, and BOOL_UNDEF2 otherwise.
     fn propagate(&self, state: &mut State) -> Bit2 {
-        let shape = &self.variable.shape;
+        let shape = &self.predicate.shape;
         let range = shape.positions();
         let block = shape.length(shape.dimension() - 1);
 
@@ -396,7 +390,7 @@ impl Exist {
     }
 
     fn get_failure(&self, state: &State) -> Option<usize> {
-        let shape = &self.variable.shape;
+        let shape = &self.predicate.shape;
         let range = shape.positions();
         let block = shape.length(shape.dimension() - 1);
 
@@ -417,7 +411,7 @@ impl Exist {
 
 impl std::fmt::Display for Exist {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "exist {}", self.variable.name)
+        write!(f, "exist {}", self.predicate.name)
     }
 }
 
@@ -425,35 +419,35 @@ impl std::fmt::Display for Exist {
 pub struct Solver {
     state: State,
     domains: Vec<Rc<Domain>>,
-    variables: Vec<Rc<Variable>>,
+    predicates: Vec<Rc<Predicate>>,
     clauses: Vec<Clause>,
     exists: Vec<Exist>,
 }
 
 impl Solver {
-    pub fn add_domain(&mut self, name: &str, size: usize) -> Rc<Domain> {
+    pub fn add_domain(&mut self, name: String, size: usize) -> Rc<Domain> {
         assert!(self.domains.iter().all(|dom| dom.name != name));
         let dom = Rc::new(Domain::new(name, size));
         self.domains.push(dom.clone());
         dom
     }
 
-    pub fn add_variable(&mut self, name: &str, domains: Vec<Rc<Domain>>) -> Rc<Variable> {
-        assert!(self.variables.iter().all(|var| var.name != name));
-        let var = Rc::new(Variable::new(&mut self.state, name, domains));
-        self.variables.push(var.clone());
-        var
+    pub fn add_variable(&mut self, name: String, domains: Vec<Rc<Domain>>) -> Rc<Predicate> {
+        assert!(self.predicates.iter().all(|pred| pred.name != name));
+        let pred = Rc::new(Predicate::new(&mut self.state, name, domains));
+        self.predicates.push(pred.clone());
+        pred
     }
 
-    pub fn add_clause(&mut self, literals: Vec<(bool, Rc<Variable>, Vec<usize>)>) {
+    pub fn add_clause(&mut self, literals: Vec<(bool, Rc<Predicate>, Vec<usize>)>) {
         let mut domains: Vec<Option<Rc<Domain>>> = Default::default();
-        for (_, var, indices) in literals.iter() {
-            assert_eq!(var.domains.len(), indices.len());
+        for (_, pred, indices) in literals.iter() {
+            assert_eq!(pred.domains.len(), indices.len());
             for (pos, &idx) in indices.iter().enumerate() {
                 if domains.len() <= idx {
                     domains.resize(idx + 1, None);
                 }
-                let dom1 = &var.domains[pos];
+                let dom1 = &pred.domains[pos];
                 let dom2 = &mut domains[idx];
                 if dom2.is_none() {
                     *dom2 = Some(dom1.clone());
@@ -467,26 +461,26 @@ impl Solver {
         let shape = Shape::new(domains.iter().map(|dom| dom.size).collect(), 0);
         let literals: Vec<Literal> = literals
             .into_iter()
-            .map(|(sign, var, indices)| Literal::new(&shape, sign, var, indices))
+            .map(|(sign, pred, indices)| Literal::new(&shape, sign, pred, indices))
             .collect();
 
         let cla = Clause::new(shape, domains, literals);
         self.clauses.push(cla);
     }
 
-    pub fn add_exist(&mut self, variable: Rc<Variable>) {
-        self.exists.push(Exist::new(variable));
+    pub fn add_exist(&mut self, predicate: Rc<Predicate>) {
+        self.exists.push(Exist::new(predicate));
     }
 
-    pub fn set_value(&mut self, sign: bool, variable: &Variable, coordinates: &[usize]) {
-        let pos = variable.shape.position(coordinates.iter());
+    pub fn set_value(&mut self, sign: bool, predicate: &Predicate, coordinates: &[usize]) {
+        let pos = predicate.shape.position(coordinates.iter());
         self.state.assign(pos, sign, Reason::Initial);
     }
 
-    pub fn set_equality(&mut self, variable: &Variable) {
-        for i in 0..variable.shape.length(0) {
-            for j in 0..variable.shape.length(1) {
-                let pos = variable.shape.position([i, j].iter());
+    pub fn set_equality(&mut self, predicate: &Predicate) {
+        for i in 0..predicate.shape.length(0) {
+            for j in 0..predicate.shape.length(1) {
+                let pos = predicate.shape.position([i, j].iter());
                 self.state.assign(pos, i == j, Reason::Initial);
             }
         }
@@ -587,9 +581,9 @@ impl Solver {
             } else if value == BOOL_TRUE {
                 if false {
                     println!("*** SOLUTION ***");
-                    for var in self.variables.iter() {
-                        println!("{}", var);
-                        self.state.print_table(&var.shape);
+                    for pred in self.predicates.iter() {
+                        println!("{}", pred);
+                        self.state.print_table(&pred.shape);
                     }
                     println!("*** END OF SOLUTION ***");
                 }
@@ -604,8 +598,8 @@ impl Solver {
         }
     }
 
-    fn lookup_var(&self, bvar: usize) -> &Variable {
-        for rvar in self.variables.iter() {
+    fn lookup_var(&self, bvar: usize) -> &Predicate {
+        for rvar in self.predicates.iter() {
             if rvar.shape.positions().contains(&bvar) {
                 return rvar;
             }
@@ -646,9 +640,9 @@ impl Solver {
         for dom in self.domains.iter() {
             println!("{}", dom);
         }
-        for var in self.variables.iter() {
-            println!("{}", var);
-            self.state.print_table(&var.shape);
+        for pred in self.predicates.iter() {
+            println!("{}", pred);
+            self.state.print_table(&pred.shape);
         }
         for step in self.state.steps.iter() {
             println!(
@@ -658,14 +652,14 @@ impl Solver {
             );
         }
         for cla in self.clauses.iter() {
-            println!("clause {}", Member(&self.state, cla));
+            println!("{}", cla);
             if let Some(failure) = cla.get_failure() {
                 // duh, this is negated
                 let failure: Vec<String> = failure
                     .into_iter()
                     .map(|bvar| self.format_var(bvar))
                     .collect();
-                println!("failure {:?}", failure);
+                println!("failure {}", failure.join(" "));
             }
         }
         for ext in self.exists.iter() {
@@ -676,7 +670,7 @@ impl Solver {
                 BOOL_FORMAT2[ext.get_status(&self.state).idx()]
             );
             if let Some(failure) = ext.get_failure(&self.state) {
-                println!("failure {:?}", self.format_var(failure));
+                println!("failure {}", self.format_var(failure));
             }
         }
         if false {
