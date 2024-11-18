@@ -541,6 +541,97 @@ impl Solver {
         result
     }
 
+    fn get_analysis_failure(&self) -> Option<Vec<usize>> {
+        for cla in self.clauses.iter() {
+            let failure = cla.get_failure();
+            if failure.is_some() {
+                return failure;
+            }
+        }
+        None
+    }
+
+    fn get_analysis_step(&self, bvar: usize) -> Option<usize> {
+        let last = *self.state.levels.last().unwrap();
+        self.state
+            .steps
+            .iter()
+            .skip(last)
+            .position(|s| s.bvar == bvar)
+            .map(|p| p + last)
+    }
+
+    fn analyze(&self) {
+        println!("*** ANALYSIS ***");
+        let failure = self.get_analysis_failure().unwrap();
+
+        let mut before: Vec<usize> = Default::default();
+        let mut after: Vec<usize> = Default::default();
+        for &bvar in failure.iter() {
+            let step = self.get_analysis_step(bvar);
+            println!("{} {} {:?}", bvar, self.format_var(bvar), step);
+            match step {
+                None => {
+                    match before.binary_search(&bvar) {
+                        Ok(_) => {}
+                        Err(pos) => before.insert(pos, bvar),
+                    };
+                }
+                Some(step) => {
+                    match after.binary_search(&step) {
+                        Ok(_) => {}
+                        Err(pos) => after.insert(pos, step),
+                    };
+                }
+            };
+        }
+        assert!(!after.is_empty());
+        println!("before: {:?}, after: {:?}", before, after);
+
+        while after.len() >= 2 {
+            let last = after.pop().unwrap();
+            match &self.state.steps[last].reason {
+                Reason::Clause(bvars) => {
+                    for &bvar in bvars.iter() {
+                        let step = self.get_analysis_step(bvar);
+                        println!("{} {} {:?}", bvar, self.format_var(bvar), step);
+                        match step {
+                            None => {
+                                match before.binary_search(&bvar) {
+                                    Ok(_) => {}
+                                    Err(pos) => before.insert(pos, bvar),
+                                };
+                            }
+                            Some(step) => {
+                                match after.binary_search(&step) {
+                                    Ok(_) => {}
+                                    Err(pos) => after.insert(pos, step),
+                                };
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    panic!();
+                }
+            };
+        }
+
+        assert_eq!(after.len(), 1);
+        let bvar = self.state.steps[after.pop().unwrap()].bvar;
+        assert!(!before.contains(&bvar));
+        before.push(bvar);
+        println!("literals: {:?}", before);
+
+        print!("learned clause:");
+        for &bvar in before.iter() {
+            print!(" {}", self.format_var(bvar));
+        }
+        println!();
+
+        println!("*** END OF ANALYSIS ***");
+    }
+
     pub fn search_all(&mut self) {
         let mut num_solutions: usize = 0;
         let mut num_learnings: usize = 0;
@@ -569,13 +660,14 @@ impl Solver {
             assert!(value != BOOL_UNDEF1 && value == self.get_status());
             if value == BOOL_FALSE && !used_exists {
                 num_learnings += 1;
-                if false {
+                self.evaluate_all();
+                if true {
                     println!("*** LEARNING ***");
-                    self.evaluate_all();
                     self.print();
                     println!("*** END OF LEARNING ***");
                 }
-                if !self.state.next_decision() {
+                self.analyze();
+                if true || !self.state.next_decision() {
                     break;
                 }
             } else if value == BOOL_FALSE && used_exists {
