@@ -672,7 +672,7 @@ impl Solver {
                 }
             } else if value == BOOL_FALSE && used_exists {
                 num_deadends += 1;
-                if false {
+                if true {
                     println!("*** EXISTS ***");
                     self.evaluate_all();
                     self.print();
